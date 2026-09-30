@@ -541,6 +541,15 @@ const series: Series[] = seriesDefs.map(([slug, title, description, match], i) =
   }
 }
 
+// Publication rule (import policy, 01.10.2026): only records the dossier marks as located ("אותר")
+// AND that carry at least one source link are published. Archive/candidate records and records
+// without a link stay drafts until a person verifies them. Nothing else is inferred.
+for (const c of all) {
+  const verified = c.verification === 'located' && c.sources.length > 0;
+  c.status = verified ? 'published' : 'draft';
+  c.publishedAt = verified ? SEED_TIME : null;
+}
+
 // Featured: a few long lessons (editorial choice can be changed in CMS).
 for (const c of all.filter((c) => c.type === 'video' && (c.durationSeconds ?? 0) > 2400).slice(0, 4)) c.featured = true;
 

@@ -10,14 +10,23 @@
 - **SEO:** 249 pre-rendered pages with title/description/OG, and a BreadcrumbList only where the data is real; robots; a sitemap and canonical URLs when `VITE_SITE_URL` is set; noindex on admin/track/favourites.
 - **Import job:** `scripts/import-media.ts`, resumable, for authorised files only.
 
+## Supabase — connected (30.09.2026)
+- Project **or-hameir** (`anofukdvpkeqmqlvglyw`, eu-central-1, free plan, organisation lavi). Created new at your request; the 3 existing paused projects were not touched.
+- All 6 migrations applied (000100–000600, including the hardening migration after the security advisor).
+- `rls_checks.sql` ran **on the real project: 48/48 PASS**, inside a transaction that rolled back. Afterwards the project has 0 users and 0 content rows, so no test data was left.
+- Security advisor: 7 intentional warnings remain (role helpers called by RLS policies, and `track_question` for public tracking); `rate_limits` has no policies by design.
+- The public site connects successfully with the publishable key (no demo banner; REST/RPC calls return 200). `.env.local` holds only the public values and is excluded from Git.
+
 ## Blocked / waiting for your decision or details
-- **Supabase connection:** no project or keys. The site is in labelled **demo mode**. The connection steps are in the README. I have a Supabase connector available in this session, but I did not touch your account without explicit instruction.
+- **Seed not loaded yet:** the DB is empty, so the connected site shows empty lists. `supabase/seed/seed.sql` (245KB) is waiting for a decision (see below).
+- **Secret key for the Node server:** not available through the connector. Question submission, voice answers, URL probe and user management need `SUPABASE_SECRET_KEY` in `.env.local` (from Project Settings → API Keys). Until then, question submission returns 503 (no fake success).
+- **First owner:** needs a real user (Auth → Invite) and then the one-time SQL from the README.
 - **Deployment:** not done, by instruction.
 - **Content that must come from the rabbi's office:** an official photo, an approved biography, the preferred spelling of titles, official contact details, class schedules, verification of YouTube channel ownership, permission to use media, the "ימי מלך" file. None of these were invented; the pages say what is missing.
 
 ## Unverified (no false claims)
 - **Termux on the phone:** has not run. `scripts/termux-smoke.sh` is ready.
-- **A real Supabase project:** RLS was checked on local Postgres + shim, not in the cloud. Real Auth, TUS uploads, signed URLs and REST calls were not run live.
+- **Supabase:** RLS/workflow checked on the real project. Not yet run live: real Auth sign-in, TUS uploads, signed URLs, and the Node endpoints (waiting for the secret key).
 - **Audio playback of a real file**, screen readers, and performance metrics (not measured, so no numbers).
 - **Vercel:** the build config, CSP and cleanUrls with Hebrew paths were not tested in deployment.
 

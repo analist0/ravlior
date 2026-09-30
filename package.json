@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "node --test tests/*.test.ts",
     "seed": "node scripts/build-seed.ts && node scripts/seed-to-sql.ts",
-    "build": "npm run typecheck && vite build && node scripts/prerender.ts",
+    "build": "npm run typecheck && vite build && node --env-file-if-exists=.env.local scripts/prerender.ts",
     "preview": "vite preview",
     "verify:db:local": "sh scripts/verify-db-local.sh"
   },

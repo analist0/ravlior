@@ -49,10 +49,12 @@ Seed regeneration (after changing the dossier): `npm run seed`.
 
 No `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` → **demo mode**. A permanent "מצב הדגמה" (demo mode) banner is shown, data comes from the seed, and changes are saved in that browser's localStorage only. The CMS is reached by picking a demo role. This is **never** a claim that the system is connected.
 
-## Connecting Supabase (steps — not done yet)
+## Connecting Supabase
+
+**Status:** connected to the `or-hameir` project (`https://anofukdvpkeqmqlvglyw.supabase.co`). Migrations 000100–000600 are applied and `rls_checks.sql` passes 48/48 there. Still open: loading the seed, the first owner, and the secret key for the server. For a new project, follow these steps:
 
 1. Create a project in Supabase (the free tier is enough to start; do not upgrade without a decision).
-2. In the SQL Editor, run in order: `supabase/migrations/20260930000100_…` through `…000500_…`, then `supabase/seed/seed.sql`.
+2. In the SQL Editor, run in order: `supabase/migrations/20260930000100_…` through `…000600_…`, then `supabase/seed/seed.sql`.
 3. Run `supabase/verify/rls_checks.sql` in the SQL Editor. It rolls back at the end; every line should print `PASS`.
 4. Create the first user (Authentication → Invite), then grant the owner role (one time, in the SQL Editor):
    ```sql

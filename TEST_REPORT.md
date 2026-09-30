@@ -7,6 +7,8 @@
 | TypeScript | `npm run typecheck` | ✔ no errors (strict, noUncheckedIndexedAccess) |
 | Unit + integration (mocks) | `npm test` | ✔ **48/48** |
 | DB: migrations + seed + RLS/workflow/storage | `PGHOST=… sh scripts/verify-db-local.sh` | ✔ **48/48 PASS** (local PG16 + shim) |
+| DB on the real Supabase project (`or-hameir`) | `rls_checks.sql` via the Supabase connector (rolls back) | ✔ **48/48 PASS**, 0 rows left afterwards |
+| Connected site | Chromium against the production preview with the publishable key | ✔ REST/RPC 200, no demo banner, real login screen |
 | Build + prerender | `npm run build` | ✔ 3.2s, 249 static pages |
 | Browser E2E + axe | `node tests/e2e/smoke.mjs` (demo mode, production preview) | ✔ **17/17** |
 
@@ -23,7 +25,7 @@ Real screenshots (not mock-ups): `docs/screenshots/*.png` · raw report: `docs/e
 ## Not tested / pending
 
 - **Termux on the phone:** install, native binaries, dev/HMR, build and preview (`scripts/termux-smoke.sh`).
-- **A real Supabase project:** `rls_checks.sql` in the SQL Editor, Auth sign-in/sign-out, real upload (standard and TUS), signed URLs, the question endpoint against REST, `auth.role()` behaviour in the SQL Editor.
+- **Supabase:** real Auth sign-in/sign-out, real upload (standard and TUS), signed URLs, and the question endpoint against REST (waiting for the secret key and a first user).
 - The persistent audio player with a real MP3 file (the seed has no native audio file, because the audio was not extracted). The UI and queue are built; playback, resume and Media Session were not tested with a file.
 - Screen readers (TalkBack / NVDA): not tested. axe is automated only.
 - Performance (LCP/INP/CLS) on a defined profile and slow network: **not measured**, so no numbers are reported. Targets: LCP ≤2.5s, INP ≤200ms, CLS ≤0.1.

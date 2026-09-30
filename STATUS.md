@@ -14,11 +14,24 @@
 - Project **or-hameir** (`anofukdvpkeqmqlvglyw`, eu-central-1, free plan, organisation lavi). Created new at your request; the 3 existing paused projects were not touched.
 - All 6 migrations applied (000100–000600, including the hardening migration after the security advisor).
 - `rls_checks.sql` ran **on the real project: 48/48 PASS**, inside a transaction that rolled back. Afterwards the project has 0 users and 0 content rows, so no test data was left.
-- Security advisor: 7 intentional warnings remain (role helpers called by RLS policies, and `track_question` for public tracking); `rate_limits` has no policies by design.
+- Security advisor: 7 warnings + 1 INFO remain. Each one is explained with live evidence in TEST_REPORT.md → "Security advisor — the 7 remaining warnings". They are not declared "fine" by intent alone; two follow-up hardening options are listed there.
 - The public site connects successfully with the publishable key (no demo banner; REST/RPC calls return 200). `.env.local` holds only the public values and is excluded from Git.
 
+## Content import into Supabase — done (30.09.2026)
+- **216 items from the dossier** (section breakdown in TEST_REPORT.md). 182 unique YouTube IDs ≠ 182 lessons: 26 duplicate groups (long + Short of the same clip), plus non-lesson items (blessing, weddings, a podcast hosted by someone else, radio episodes).
+- **Published 209, draft 7.** Rule: published only if `verification = located` AND at least one source. Drafts: 5 legacy-channel items (ownership unverified), 1 or-breslev candidate, 1 book with no source (אגרות הנאמ״ן). Missing fields were left empty, not invented.
+- **Provenance and verification status on every item** (`provenance` = dossier section/row, `verification`, `attribution_status`).
+- **Metadata and links only** — no media downloaded.
+- **Idempotent:** stable sha1-derived UUIDs; insert-only with `ON CONFLICT DO NOTHING`. Proven locally: re-running twice after a CMS edit and a role change left counts unchanged and kept the edit and the role.
+- **Verified byte-for-byte:** `scripts/seed-rowhash.sql` gives identical full-row hashes remote vs local for all 14 tables. `auth.users` = 0 and `user_roles` = 0 before and after (no users/roles touched).
+- **Permissions checked live as an anonymous visitor** (REST with the publishable key): 209 items, 0 drafts, 217 media rows (drafts' sources hidden), 0 rows in every private table, writes rejected by RLS.
+- **Site on live data:** `tests/e2e/live-supabase.mjs` — 28/28 (library, 10 filters, search incl. Hebrew normalisation, item page, YouTube player, drafts unreachable, series/topics/books/responsa/institutions/about/sources).
+- **Pre-render from the DB:** 243 pages = 209 items + 15 topics + 5 series + 4 CMS pages + 10 root pages; no page for any draft. Vite empties `dist/` on every build, so a removed/unpublished item leaves no stale page.
+- **Bug fixed while testing:** after a failed load the library counter said "0 פריטים" next to the error; it now says "הטעינה נכשלה".
+- **Homepage banner:** the image you sent is shown at the top of the homepage (WebP 32/78KB instead of a 1.8MB PNG; the original is in `docs/brand/`).
+
 ## Blocked / waiting for your decision or details
-- **Seed not loaded yet:** the DB is empty, so the connected site shows empty lists. `supabase/seed/seed.sql` (245KB) is waiting for a decision (see below).
+- **Real CMS CRUD after refresh on Supabase:** blocked — there is no authorised user and I do not create users. Verified only in demo mode (see TEST_REPORT). Consequently "content added via the CMS appears on public pages" is verified in demo mode and via the pre-render pipeline, not with a real Supabase edit.
 - **Secret key for the Node server:** not available through the connector. Question submission, voice answers, URL probe and user management need `SUPABASE_SECRET_KEY` in `.env.local` (from Project Settings → API Keys). Until then, question submission returns 503 (no fake success).
 - **First owner:** needs a real user (Auth → Invite) and then the one-time SQL from the README.
 - **Deployment:** not done, by instruction.

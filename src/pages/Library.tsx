@@ -102,7 +102,8 @@ export default function LibraryPage() {
 
       <div className="spread" style={{ marginBottom: 'var(--s-4)' }}>
         <p className="muted" role="status" aria-live="polite" style={{ margin: 0 }}>
-          {res.loading ? 'טוען…' : `${res.data?.total ?? 0} פריטים`}
+          {/* On a failed load there is no count to report — never show "0 items" next to the error. */}
+          {res.loading ? 'טוען…' : res.error ? 'הטעינה נכשלה' : `${res.data?.total ?? 0} פריטים`}
           {active > 0 && !res.loading && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => update({ q: null, type: null, topic: null, series: null, provider: null, page: null })} style={{ marginInlineStart: 8 }}>
               ניקוי מסננים

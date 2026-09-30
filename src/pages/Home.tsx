@@ -158,6 +158,19 @@ export function HomePage() {
   const showActions = enabled.some((s) => s.kind === 'actions');
   return (
     <>
+      <div className="hero-banner container">
+        {/* Owner-supplied banner (docs/brand/hero-rabbi-original.png), re-encoded to WebP. */}
+        <img
+          src={`${import.meta.env.BASE_URL}images/hero-rabbi-1600.webp`}
+          srcSet={`${import.meta.env.BASE_URL}images/hero-rabbi-800.webp 800w, ${import.meta.env.BASE_URL}images/hero-rabbi-1600.webp 1600w`}
+          sizes="(max-width: 1280px) 100vw, 1280px"
+          width={1600}
+          height={800}
+          alt="הרב ליאור כהן שליט״א — תורה, הלכה, שיעורים, שאלות ותשובות"
+          fetchPriority="high"
+          decoding="async"
+        />
+      </div>
       <section className="hero" aria-labelledby="hero-title">
         <HeroArt />
         <div className="container">

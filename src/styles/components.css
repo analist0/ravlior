@@ -88,6 +88,9 @@
 .demo-banner strong { font-weight: 700; }
 
 /* ——— hero ——— */
+.hero-banner { padding-top: var(--s-4); }
+.hero-banner img { display: block; width: 100%; height: auto; border-radius: var(--r-3); box-shadow: var(--shadow-1); background: #0b1a3a; }
+@media (max-width: 700px) { .hero-banner { padding-inline: 0; padding-top: 0; } .hero-banner img { border-radius: 0; } }
 .hero { position: relative; overflow: hidden; isolation: isolate; padding-block: clamp(var(--s-10), 9vw, var(--s-20)) clamp(var(--s-8), 6vw, var(--s-16)); }
 .hero::before {
   content: ''; position: absolute; inset: -20% -10% auto -10%; height: 120%; z-index: -2;

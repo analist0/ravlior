@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vercel/
+import-jobs/
+termux-smoke-*.log
+.preview.pid
+.dev.pid

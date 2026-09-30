@@ -1,0 +1,121 @@
+{
+ "checks": [
+  {
+   "name": "no horizontal overflow at 360/390/768/1440 on all public routes",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "axe WCAG 2.2 A/AA: no violations",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "first Tab lands on the skip link",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "prefers-reduced-motion zeroes motion tokens",
+   "pass": true,
+   "detail": "0ms"
+  },
+  {
+   "name": "no JS-driven transforms under reduced motion",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "search panel opens with \"/\" and returns results for Hebrew query",
+   "pass": true,
+   "detail": "3 options"
+  },
+  {
+   "name": "Escape closes the search panel",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "library filter is preserved in the URL across reload",
+   "pass": true,
+   "detail": "88 פריטיםניקוי מסננים"
+  },
+  {
+   "name": "pagination keeps filters",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "YouTube iframe not loaded before click",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "click loads official youtube-nocookie embed only",
+   "pass": true,
+   "detail": "https://www.youtube-nocookie.com/embed/-PEQCcQyi_Q?rel=0&modestbranding=1&autoplay=1"
+  },
+  {
+   "name": "question submitted; private tracking link uses URL fragment",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "tracking page shows status and strips the secret from the address bar",
+   "pass": true,
+   "detail": "http://127.0.0.1:4173/track"
+  },
+  {
+   "name": "editor cannot see a publish button",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "status persisted after reload (published)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "published item appears in public library search",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "no console errors / page errors",
+   "pass": true,
+   "detail": ""
+  }
+ ],
+ "axe": {
+  "390 /": [],
+  "390 /library": [],
+  "390 /item/המעבר-מיום-הדין-לימי-השמחה-והמתכון-לחיים-מאוזנים-e53f73": [],
+  "390 /series/or-haneeman": [],
+  "390 /topics": [],
+  "390 /books": [],
+  "390 /responsa": [],
+  "390 /ask": [],
+  "390 /about": [],
+  "390 /institutions": [],
+  "390 /sources": [],
+  "390 /favorites": [],
+  "390 /p/accessibility": [],
+  "390 /no-such-page": [],
+  "1440 /": [],
+  "1440 /library": [],
+  "1440 /item/המעבר-מיום-הדין-לימי-השמחה-והמתכון-לחיים-מאוזנים-e53f73": [],
+  "1440 /series/or-haneeman": [],
+  "1440 /topics": [],
+  "1440 /books": [],
+  "1440 /responsa": [],
+  "1440 /ask": [],
+  "1440 /about": [],
+  "1440 /institutions": [],
+  "1440 /sources": [],
+  "1440 /favorites": [],
+  "1440 /p/accessibility": [],
+  "1440 /no-such-page": []
+ },
+ "overflow": [],
+ "consoleErrors": []
+}

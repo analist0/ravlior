@@ -10,6 +10,7 @@ import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../sh
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
 import { slugify } from '../shared/hebrew.ts';
+import { validateArchive } from '../shared/archives.ts';
 import { storagePath, BUCKETS, type BucketId } from '../shared/upload-policy.ts';
 import {
   contentTransitionAllowed, canEdit, canReview, isAdmin, isStaff, questionTransitionAllowed, PermissionError, VersionConflictError,
@@ -20,7 +21,7 @@ import type {
   PublicQuestion, QuestionSubmission, Role, SeedData, Series, SourceArchive, Topic,
 } from '../shared/types.ts';
 import type {
-  AdminRepo, AuditEntry, EntityName, EntityRecord, ImportRow, ListOptions, QuestionInput, Repository, Revision, Session, StaffUser, TrackResult,
+  AdminRepo, ArchiveInput, AuditEntry, EntityName, EntityRecord, ImportRow, ListOptions, MediaCatalogRow, QuestionInput, Repository, Revision, Session, StaffUser, TrackResult,
 } from './repo.ts';
 
 const DB_KEY = 'demo-db.v1';
@@ -104,6 +105,19 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
   const find = (e: EntityName, id: string) => table(e).find((r) => r.id === id);
 
   const pub = <T extends { status: string; deletedAt: string | null }>(xs: T[]) => xs.filter(isPublic);
+  const recordTitle = (r: EntityRecord): string => {
+    if ('title' in r && r.title) return String(r.title);
+    if ('name' in r && r.name) return String(r.name);
+    if ('questionText' in r && r.questionText) return String(r.questionText);
+    return '';
+  };
+  const cleanArchive = (data: Partial<ArchiveInput>, base?: SourceArchive): ArchiveInput => ({
+    name: String(data.name ?? base?.name ?? '').trim(),
+    material: String(data.material ?? base?.material ?? '').trim(),
+    url: String(data.url ?? base?.url ?? '').trim(),
+    verification: data.verification ?? base?.verification ?? 'archive',
+    note: String(data.note ?? base?.note ?? '').trim() || null,
+  });
 
   const repo: Repository = {
     mode: 'demo',
@@ -239,7 +253,18 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       if (opts.status) rows = rows.filter((r) => 'status' in r && r.status === opts.status);
       if (opts.type) rows = rows.filter((r) => 'type' in r && r.type === opts.type);
       if (opts.q) rows = rows.filter((r) => heMatches(JSON.stringify([('title' in r && r.title) || '', ('name' in r && r.name) || '', ('questionText' in r && r.questionText) || '', ('slug' in r && r.slug) || '']), opts.q!));
-      const sorted = [...rows].sort((a, b) => ((b as ContentItem).updatedAt ?? '').localeCompare((a as ContentItem).updatedAt ?? '') || ((a as ContentItem).catalogOrder ?? 0) - ((b as ContentItem).catalogOrder ?? 0));
+      const sort = opts.sort ?? 'updated';
+      const sorted = [...rows].sort((a, b) => {
+        if (sort === 'title') return recordTitle(a).localeCompare(recordTitle(b), 'he');
+        if (sort === 'status') {
+          const sa = 'status' in a ? String(a.status) : '';
+          const sb = 'status' in b ? String(b.status) : '';
+          return sa.localeCompare(sb) || recordTitle(a).localeCompare(recordTitle(b), 'he');
+        }
+        const ua = 'updatedAt' in a ? String((a as { updatedAt?: string }).updatedAt ?? '') : '';
+        const ub = 'updatedAt' in b ? String((b as { updatedAt?: string }).updatedAt ?? '') : '';
+        return ub.localeCompare(ua) || recordTitle(a).localeCompare(recordTitle(b), 'he');
+      });
       return clone({ items: sorted.slice((page - 1) * pageSize, page * pageSize), total: sorted.length, page, pageSize });
     },
     async get(entity, id) {
@@ -268,7 +293,11 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
         } as ContentItem;
       } else {
         rec = { ...(data as object), ...base } as EntityRecord;
-        if ('slug' in rec && !rec.slug) (rec as Topic).slug = `${slugify(('title' in rec ? rec.title : '') || ('name' in rec ? (rec as Topic).name : '') || 'item')}-${base.id.slice(0, 4)}`;
+        const currentSlug = 'slug' in rec ? String((rec as { slug?: string }).slug ?? '') : '';
+        if (!currentSlug) {
+          const label = ('title' in rec && rec.title) || ('name' in rec && (rec as Topic).name) || ('questionText' in rec && (rec as PublicQuestion).questionText) || 'item';
+          (rec as Topic).slug = `${slugify(String(label))}-${base.id.slice(0, 4)}`;
+        }
         if (entity === 'series') Object.assign(rec, { items: (rec as Series).items ?? [], kind: (rec as Series).kind ?? 'system', sort: (rec as Series).sort ?? 0 });
       }
       if ('slug' in rec && table(entity).some((r) => 'slug' in r && r.slug === rec.slug)) throw new Error('הכתובת (slug) כבר קיימת. בחרו כתובת אחרת.');
@@ -343,10 +372,79 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       requireStaff();
       return clone(db.revisions.filter((r) => r.entity === entity && r.entityId === id));
     },
-    async audit(page) {
+    async audit(page, opts) {
       if (!isAdmin(roles())) throw new PermissionError('יומן הפעולות זמין למנהלים בלבד.');
       const pageSize = 50;
-      return clone({ items: db.audit.slice((page - 1) * pageSize, page * pageSize), total: db.audit.length, page, pageSize });
+      const q = opts?.q?.trim();
+      const rows = q ? db.audit.filter((a) => heMatches([a.action, a.entity, a.actor ?? '', a.entityId ?? ''].join(' '), q)) : db.audit;
+      return clone({ items: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize });
+    },
+    async listMedia(opts) {
+      requireStaff();
+      let rows: MediaCatalogRow[] = db.content.flatMap((c) => c.sources.map((s) => ({
+        id: s.id, contentId: c.id, contentTitle: c.title, contentSlug: c.slug,
+        provider: s.provider, providerId: s.providerId, kind: s.kind, url: s.url, rightsStatus: s.rightsStatus,
+      })));
+      if (opts.kind) rows = rows.filter((r) => r.kind === opts.kind);
+      if (opts.provider) rows = rows.filter((r) => r.provider === opts.provider);
+      if (opts.q) rows = rows.filter((r) => heMatches([r.contentTitle, r.url, r.provider, r.providerId ?? ''].join(' '), opts.q!));
+      rows.sort((a, b) => (opts.sort === 'provider'
+        ? a.provider.localeCompare(b.provider) || a.contentTitle.localeCompare(b.contentTitle, 'he')
+        : a.contentTitle.localeCompare(b.contentTitle, 'he')));
+      const page = opts.page ?? 1;
+      const pageSize = opts.pageSize ?? 25;
+      return clone({ items: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize });
+    },
+    async removeMedia(contentId, sourceId) {
+      requireEdit();
+      const c = db.content.find((x) => x.id === contentId);
+      if (!c) throw new Error('הפריט לא נמצא');
+      if (!c.sources.some((s) => s.id === sourceId)) throw new Error('המקור לא נמצא');
+      await admin.saveSources(contentId, c.sources.filter((s) => s.id !== sourceId));
+    },
+    async listArchivesAdmin(opts) {
+      requireStaff();
+      let rows = [...db.archives];
+      if (opts.verification) rows = rows.filter((a) => a.verification === opts.verification);
+      if (opts.q) rows = rows.filter((a) => heMatches([a.name, a.material ?? '', a.url, a.note ?? ''].join(' '), opts.q!));
+      rows.sort((a, b) => (opts.sort === 'verification'
+        ? a.verification.localeCompare(b.verification) || a.name.localeCompare(b.name, 'he')
+        : a.name.localeCompare(b.name, 'he')));
+      const page = opts.page ?? 1;
+      const pageSize = opts.pageSize ?? 25;
+      return clone({ items: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize });
+    },
+    async createArchive(data) {
+      requireEdit();
+      const next = cleanArchive(data);
+      const errors = validateArchive(next);
+      if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+      if (db.archives.some((a) => a.url === next.url)) throw new Error('הקישור כבר קיים בארכיון.');
+      const rec: SourceArchive = { id: uid(), ...next };
+      db.archives.unshift(rec);
+      log('insert', 'source_archives', rec.id);
+      persist();
+      return clone(rec);
+    },
+    async updateArchive(id, patch) {
+      requireEdit();
+      const rec = db.archives.find((a) => a.id === id);
+      if (!rec) throw new Error('הארכיון לא נמצא');
+      const next = cleanArchive(patch, rec);
+      const errors = validateArchive(next);
+      if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+      if (db.archives.some((a) => a.id !== id && a.url === next.url)) throw new Error('הקישור כבר קיים בארכיון.');
+      Object.assign(rec, next);
+      log('update', 'source_archives', id);
+      persist();
+      return clone(rec);
+    },
+    async deleteArchive(id) {
+      requireEdit();
+      if (!db.archives.some((a) => a.id === id)) throw new Error('הארכיון לא נמצא');
+      db.archives = db.archives.filter((a) => a.id !== id);
+      log('delete', 'source_archives', id);
+      persist();
     },
 
     async saveSources(contentId, sources: MediaSource[]) {
@@ -409,7 +507,14 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     async listQuestions(opts) {
       if (!roles().some((r) => r !== 'viewer')) throw new PermissionError('תיבת השאלות אינה זמינה לתפקיד צופה.');
       const page = opts.page ?? 1;
-      const rows = db.questions.filter((q) => !opts.status || q.status === opts.status);
+      let rows = db.questions.filter((q) => !opts.status || q.status === opts.status);
+      if (opts.q) rows = rows.filter((q) => heMatches([q.questionText, q.trackingCode, q.askerName ?? ''].join(' '), opts.q!));
+      const sort = opts.sort ?? 'newest';
+      rows = [...rows].sort((a, b) => {
+        if (sort === 'status') return a.status.localeCompare(b.status) || b.createdAt.localeCompare(a.createdAt);
+        if (sort === 'code') return a.trackingCode.localeCompare(b.trackingCode);
+        return b.createdAt.localeCompare(a.createdAt);
+      });
       return clone({ items: rows.slice((page - 1) * 25, page * 25), total: rows.length, page, pageSize: 25 });
     },
     async getQuestion(id) {

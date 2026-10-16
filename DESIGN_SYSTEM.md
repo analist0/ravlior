@@ -1,42 +1,53 @@
-# DESIGN_SYSTEM — "a living digital beit midrash"
+# DESIGN_SYSTEM — "עמוד וקו" (page and rule)
 
-The direction: a dignified Torah library. Strong Hebrew typography, clean surfaces, warm light over book shelves, and exact interaction details. The public site is warm and airy; the CMS is denser and quieter.
+A contemporary editorial beit midrash. Cool paper, evergreen ink, one copper highlight, and a dark management rail. The public site stays airy; the CMS is denser and clearly a workspace.
+
+The previous direction (warm ivory, deep blue, gold, Frank Ruhl Libre + Heebo) is replaced by this system. Behaviour, routes, and the SEO pre-render are unchanged.
 
 ## Tokens (`src/styles/tokens.css`)
 
-All colours live in tokens; components never use raw hex values.
+All colours live in tokens. Components do not introduce new hex values. Older token names (`--ivory-*`, `--gold-*`, `--blue-*`) still exist so existing markup keeps working; their values are now paper, copper, and evergreen.
 
 | group | tokens | light | dark |
 |---|---|---|---|
-| surfaces | `--bg` `--bg-elevated` `--bg-sunken` `--surface` | warm ivory `#f7f1e6` / `#fcf9f3` / `#efe5d3` / `#fffdf8` | `#13151b` / `#1a1d25` / `#0e1015` / `#1c1f28` |
-| text | `--text` `--text-muted` `--text-soft` | dark ink `#16181f` / `#474b57` / `#5d6270` | `#efe9dc` / `#bfb8a9` / `#a39d90` |
-| accent | `--accent` `--accent-hover` `--accent-soft` | deep blue `#1d3a6b` | `#8fb1ec` |
-| gold | `--gold` `--gold-text` | `#b8892b` (decorative) / `#7c5a12` (text, AA on ivory) | `#e9b949` / `#e7c060` |
-| light | `--glow` | amber `#f7d58e` | `#6b4f12` |
-| status | `--danger` `--success` `--focus` | | |
+| surfaces | `--bg` `--bg-elevated` `--bg-sunken` `--surface` | cool paper `#f4f7f5` / `#fbfcfb` / `#e6eeea` / `#ffffff` | `#0d1411` / `#15201c` / `#090f0d` / `#1a2823` |
+| text | `--text` `--text-muted` `--text-soft` | evergreen ink `#10211c` / `#3c5248` / `#4e665c` | `#e7f3ee` / `#c3d5cc` / `#a9c0b6` |
+| accent | `--accent` `--accent-hover` `--accent-soft` | `#0b5e49` (white label text, AA) | `#7ee0c2` on `#06241c` |
+| copper | `--gold` `--gold-text` | decorative `#c56a32` / text `#8a3f14` (AA on paper) | `#e7a36a` / `#f0c09a` |
+| wash | `--glow` | mint `#d7efe6` | `#1c3d32` |
+| status | `--danger` `--success` `--focus` | `#9f2d24` / `#1f6b45` / `#0a5cad` | lighter tints, AA on the dark surfaces |
+| admin rail | `--admin-rail` `--admin-rail-text` `--admin-rail-active` | deep ink rail, white active label | same active chip, slightly lifted rail |
 
-**Type:** Frank Ruhl Libre (headings, serif) + Heebo (body text). Both OFL-1.1 via `@fontsource`, self-hosted, Hebrew subset (+ Latin for digits). Scale `--step--1 … --step-5` (fluid clamp), multiplied by `--font-scale`, which the user can change in the display menu (100% / 112.5% / 125%).
-**Spacing:** 4px base (`--s-1 … --s-20`), `--gutter` responsive, `--maxw` 76rem, `--maxw-text` 42rem.
-**Shape:** `--r-1…4`, `--r-pill`; shadows `--shadow-1…3`.
-**Motion:** `--dur-1/2/3` (120/220/380ms), `--ease-out`, `--ease-spring`. Under `prefers-reduced-motion`, or with "הפחתת תנועה" (reduce motion) selected in the menu, all durations become 0ms and the JS animations (motion/react) are not rendered.
-**Layout:** `--tap` 44px (touch target), `--header-h`, `--bottom-nav-h`, `--player-h`.
+Checked pairs (text on its surface) are at least 4.5:1. Large UI chrome (buttons, the active nav chip) is at least 4.5:1 as well. Focus rings are 3px `--focus`.
+
+**Type:** Noto Serif Hebrew (headings) + Assistant (UI and body). Both OFL, self-hosted via `@fontsource` 5.3.0, Hebrew subset plus Latin for digits and codes. Scale `--step--1 … --step-5` (fluid clamp), multiplied by `--font-scale` (100% / 112.5% / 125% in the display menu).
+
+**Spacing:** 4px base (`--s-1 … --s-20`), `--gutter` responsive, `--maxw` 76rem, `--maxw-text` 42rem. Body line-height 1.7.
+
+**Shape:** `--r-1…4` (8 / 12 / 18 / 28), `--r-pill` for chips, search, and pagination only. Buttons and cards use `--r-2`, not a full pill. Shadows are short and cool.
+
+**Motion:** `--dur-1/2/3` (120/220/380ms), `--ease-out`, `--ease-spring`. Under `prefers-reduced-motion`, or with "הפחתת תנועה" selected, durations become 0ms and the JS motion is not rendered. Hover on tiles and cards changes border and shadow only (no lift).
+
+**Layout:** `--tap` 44px, `--header-h` 68px with a 2px accent rule, `--bottom-nav-h`, `--player-h`. The active mobile tab uses an inset accent rule so the bar does not overflow.
 
 ## Dark mode
 
-A real dark theme: `prefers-color-scheme` by default, or a user choice (`data-theme` on `<html>`, applied before paint by `public/theme-init.js`). Contrast was checked automatically with axe on the main pages (TEST_REPORT).
+`prefers-color-scheme` by default, or `data-theme` on `<html>` before paint (`public/theme-init.js`). The footer is evergreen ink in both themes, with light link text.
 
 ## Components (`src/components`)
 
-Header (sticky, blurred background) · BottomNav (mobile) · Breadcrumbs · SearchPanel (Radix Dialog, `/` to open, arrow keys, Enter) · MediaCard grid/list · Badge · Filters (chips, selects, grid/list segmented control, "more filters" disclosure on mobile) · EmptyState / ErrorState + retry · Skeleton · Modal + ConfirmProvider · Toasts (aria-live, with an optional action such as "undo") · form fields (label, hint, error, aria-invalid) · Button / IconButton / LinkButton · Pagination · BlockRenderer (whitelist) · MediaPlayer (click-to-load) · PlayerBar (persistent) · HeroArt (pure SVG).
+Header (sticky, blurred paper, accent rule) · BottomNav · Breadcrumbs · SearchPanel · MediaCard grid/list · Badge · Filters · EmptyState / ErrorState · Skeleton · Modal + ConfirmProvider · Toasts · form fields · Button / IconButton / LinkButton · Pagination · BlockRenderer · MediaPlayer · PlayerBar · HeroArt (SVG shelves and a light beam; no invented portrait).
 
-## Motion — with meaning
+The mark is an open book with a copper spine on an evergreen square.
 
-Gentle section entrance (spring on `whileInView`, once), a grid/list swap (AnimatePresence), dialogs popping in, hover/tap on tiles, the player expanding, and upload progress. No autoplay audio, no scroll hijacking, and no loader hiding an available page. Only transform/opacity are animated. No WebGL. The SVG animation of the light pauses when the tab is hidden (`visibilitychange`).
+## Admin
+
+The rail is evergreen ink even in light mode, so management is visually separate from the public site. Lists share one toolbar: search, status, sort (updated / title / status), active vs trash, pagination. Source archives and the media catalog use the same pattern. Destructive actions confirm in Hebrew and say whether restore is possible.
 
 ## Hero
 
-Typographic, with **no invented portrait**: an official image of the rabbi does not exist yet. Book shelves and light rays in SVG sit on a warm gradient. When an approved official photo arrives, add it through the image block or the page (credit field).
+The owner-supplied banner stays. Below it, a typographic hero with a copper-to-evergreen rule. No invented portrait and no new biographical claims.
 
 ## RTL and bidi
 
-`<html lang="he" dir="rtl">`. Durations, codes and URLs are wrapped in `.ltr` / `dir="ltr"` (unicode-bidi: isolate). Logical properties (`inset-inline`, `margin-inline`) are used everywhere.
+`<html lang="he" dir="rtl">`. Durations, codes and URLs use `.ltr` / `dir="ltr"`. Logical properties (`inset-inline`, `margin-inline`, `padding-inline-start`) throughout.

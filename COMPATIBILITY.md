@@ -32,7 +32,7 @@ npm run dev                                      # open http://127.0.0.1:5173 in
 | motion | 12.43.0 (`motion/react`) | animations | https://motion.dev/docs/react-installation | peer react ^18 \|\| ^19 | none | ✔ | inferred | Not 13.x: 12 is the stable line verified here |
 | radix-ui | 1.6.7 | Dialog, Popover | https://www.radix-ui.com/primitives/docs/overview/introduction | peer react ≤19 | none | ✔ (focus trap/Escape tested in E2E) | inferred | Only Dialog and Popover are imported |
 | tus-js-client | 4.3.1 | resumable uploads (browser + import script) | https://supabase.com/docs/guides/storage/uploads/resumable-uploads | node >=18 | none | build ✔; **no real upload performed** | inferred | Needs testing against a real Supabase project |
-| @fontsource/frank-ruhl-libre, @fontsource/heebo | 5.3.0 | self-hosted fonts (OFL-1.1) | npm (license: OFL-1.1) | — | none (woff2 files) | ✔ | inferred | No external font service |
+| @fontsource/noto-serif-hebrew, @fontsource/assistant | 5.3.0 | self-hosted fonts (OFL-1.1), Hebrew subset | npm (license: OFL-1.1) | — | none (woff2 files) | not re-run on device | inferred | No external font service. Replaces Frank Ruhl Libre + Heebo; same package line (5.3.0), woff2 only |
 | @types/node | 22.20.4 | types | npm | — | none | ✔ | inferred | — |
 
 **Deliberately not in the project:** SWC, sharp, lightningcss, workerd/Miniflare, better-sqlite3, Wrangler, Supabase CLI/Docker, Playwright (browser tests ran from a separate scratch directory in the cloud container only), and any HLS package (there are no HLS sources).

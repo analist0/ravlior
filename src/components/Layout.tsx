@@ -11,10 +11,9 @@ import type { ContentItem, Menu } from '../shared/types.ts';
 export function BrandMark() {
   return (
     <svg className="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-      <rect width="40" height="40" rx="11" fill="var(--accent)" />
-      <path d="M20 7c-5 6.5-5 11.5 0 16 5-4.5 5-9.5 0-16z" fill="var(--gold-300)" />
-      <rect x="10" y="26" width="20" height="3" rx="1.5" fill="var(--ivory-100)" />
-      <rect x="13" y="31" width="14" height="3" rx="1.5" fill="var(--ivory-100)" opacity=".7" />
+      <rect width="40" height="40" rx="12" fill="var(--accent)" />
+      <path d="M11 28.5V14.2c2.4-1.5 4.8-2.1 9-2.1s6.6.6 9 2.1v14.3c-2.4-1.2-5-1.7-9-1.7s-6.6.5-9 1.7z" fill="none" stroke="var(--accent-contrast)" strokeWidth="1.6" />
+      <path d="M20 12.1v14.7" stroke="var(--gold-300)" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   );
 }

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type DependencyList } from 'react';
 import type {
   Block, ContentItem, ContentQuery, ContentStatus, EventRecord, HomeSection, Institution, Menu, MediaSource, ModuleState,
-  Page, PageResult, PublicQuestion, QuestionStatus, QuestionSubmission, Role, Series, SourceArchive, Topic,
+  Page, PageResult, PublicQuestion, QuestionStatus, QuestionSubmission, Role, Series, SourceArchive, Topic, Verification,
 } from '../shared/types.ts';
 import type { BucketId } from '../shared/upload-policy.ts';
 
@@ -14,7 +14,28 @@ export type EntityRecord = ContentItem | Topic | Series | Page | Institution | E
 
 export interface Session { userId: string; email: string; roles: Role[]; demo: boolean }
 
-export interface ListOptions { q?: string; status?: ContentStatus | ''; type?: string; view?: 'active' | 'trash'; page?: number; pageSize?: number }
+export type ListSort = 'updated' | 'title' | 'status';
+export interface ListOptions { q?: string; status?: ContentStatus | ''; type?: string; view?: 'active' | 'trash'; page?: number; pageSize?: number; sort?: ListSort }
+
+export interface MediaCatalogRow {
+  id: string;
+  contentId: string;
+  contentTitle: string;
+  contentSlug: string;
+  provider: string;
+  providerId: string | null;
+  kind: string;
+  url: string;
+  rightsStatus: string;
+}
+
+export interface ArchiveInput {
+  name: string;
+  material: string;
+  url: string;
+  verification: Verification;
+  note: string | null;
+}
 
 export interface Revision { version: number; createdAt: string; createdBy: string | null; snapshot: Record<string, unknown> }
 export interface AuditEntry { id: string; actor: string | null; action: string; entity: string; entityId: string | null; meta: Record<string, unknown>; createdAt: string }
@@ -55,7 +76,16 @@ export interface AdminRepo {
   restore(entity: EntityName, id: string, expectedVersion: number): Promise<void>;
   destroy(entity: EntityName, id: string): Promise<void>;
   revisions(entity: EntityName, id: string): Promise<Revision[]>;
-  audit(page: number): Promise<PageResult<AuditEntry>>;
+  audit(page: number, opts?: { q?: string }): Promise<PageResult<AuditEntry>>;
+
+  listMedia(opts: { q?: string; kind?: string; provider?: string; page?: number; pageSize?: number; sort?: 'title' | 'provider' }): Promise<PageResult<MediaCatalogRow>>;
+  /** Removes one source from its content item. The parent item stays. */
+  removeMedia(contentId: string, sourceId: string): Promise<void>;
+
+  listArchivesAdmin(opts: { q?: string; verification?: string; page?: number; pageSize?: number; sort?: 'name' | 'verification' }): Promise<PageResult<SourceArchive>>;
+  createArchive(data: ArchiveInput): Promise<SourceArchive>;
+  updateArchive(id: string, patch: Partial<ArchiveInput>): Promise<SourceArchive>;
+  deleteArchive(id: string): Promise<void>;
 
   saveSources(contentId: string, sources: MediaSource[]): Promise<void>;
   setSeriesItems(seriesId: string, contentIds: string[]): Promise<void>;
@@ -63,7 +93,7 @@ export interface AdminRepo {
   saveHomeSections(sections: HomeSection[]): Promise<HomeSection[]>;
   setModule(id: string, enabled: boolean, settings: Record<string, unknown>): Promise<void>;
 
-  listQuestions(opts: { status?: QuestionStatus | ''; page?: number }): Promise<PageResult<QuestionSubmission>>;
+  listQuestions(opts: { status?: QuestionStatus | ''; page?: number; q?: string; sort?: 'newest' | 'status' | 'code' }): Promise<PageResult<QuestionSubmission>>;
   getQuestion(id: string): Promise<QuestionSubmission | null>;
   updateQuestion(id: string, patch: Partial<QuestionSubmission>, expectedVersion: number): Promise<QuestionSubmission>;
   transitionQuestion(id: string, to: QuestionStatus, expectedVersion: number): Promise<QuestionSubmission>;

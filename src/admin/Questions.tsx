@@ -13,23 +13,37 @@ export function QuestionsInbox() {
   const repo = useRepo();
   const [params, update] = useSearchParams();
   const status = (params.get('status') as QuestionStatus) || '';
+  const q = params.get('q') ?? '';
+  const sort = params.get('sort') === 'status' || params.get('sort') === 'code' ? params.get('sort') as 'status' | 'code' : 'newest';
   const page = Number(params.get('page') ?? 1) || 1;
-  const r = useAsync(() => repo.admin.listQuestions({ status, page }), [status, page]);
+  const [text, setText] = useState(q);
+  const r = useAsync(() => repo.admin.listQuestions({ status, page, q, sort }), [status, page, q, sort]);
   return (
     <div>
       <h1>תיבת שאלות</h1>
       <Notice icon="lock">שאלות פרטיות. אין להעתיק תוכן מזהה החוצה. פרסום רק בהסכמת השואל ואחרי אישור הרב.</Notice>
-      <div className="admin-toolbar" style={{ marginTop: 'var(--s-4)' }}>
+      <form className="admin-toolbar" role="search" style={{ marginTop: 'var(--s-4)' }} onSubmit={(e) => { e.preventDefault(); update({ q: text, page: null }); }}>
+        <div className="field">
+          <label htmlFor="qq">חיפוש</label>
+          <input id="qq" className="input" type="search" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => text !== q && update({ q: text, page: null })} placeholder="טקסט או מספר מעקב" />
+        </div>
         <div className="field">
           <SelectField label="סטטוס" value={status} onChange={(e) => update({ status: e.target.value, page: null })}>
             <option value="">הכול</option>
             {QUESTION_STATUSES.map((s) => <option key={s} value={s}>{QUESTION_STATUS_LABEL[s]}</option>)}
           </SelectField>
         </div>
-      </div>
+        <div className="field">
+          <SelectField label="מיון" value={sort} onChange={(e) => update({ sort: e.target.value === 'newest' ? null : e.target.value, page: null })}>
+            <option value="newest">חדשות תחילה</option>
+            <option value="status">סטטוס</option>
+            <option value="code">מספר מעקב</option>
+          </SelectField>
+        </div>
+      </form>
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <Skeleton h={200} />}
-      {r.data?.items.length === 0 && <EmptyState icon="ask" title="אין שאלות בסטטוס זה" />}
+      {r.data?.items.length === 0 && <EmptyState icon="ask" title={q || status ? 'אין שאלות התואמות לסינון' : 'אין שאלות'} />}
       {!!r.data?.items.length && (
         <div className="table-wrap">
           <table className="data">
@@ -48,7 +62,11 @@ export function QuestionsInbox() {
           </table>
         </div>
       )}
-      {r.data && <Pagination page={page} total={r.data.total} pageSize={25} hrefFor={(p) => `/admin/questions?${new URLSearchParams({ ...(status ? { status } : {}), page: String(p) })}`} />}
+      {r.data && <Pagination page={page} total={r.data.total} pageSize={25} hrefFor={(p) => {
+        const n = new URLSearchParams(params);
+        n.set('page', String(p));
+        return `/admin/questions?${n}`;
+      }} />}
     </div>
   );
 }

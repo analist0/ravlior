@@ -6,13 +6,14 @@ import { previewRows } from '../shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
 import { relatedItems } from '../shared/query.ts';
 import { slugify } from '../shared/hebrew.ts';
+import { validateArchive } from '../shared/archives.ts';
 import { storagePath, BUCKETS, type BucketId } from '../shared/upload-policy.ts';
 import { PermissionError, VersionConflictError } from '../shared/workflow.ts';
 import type {
   ContentItem, EventRecord, HomeSection, Institution, MediaSource, Menu, ModuleState, Page, PublicQuestion,
   QuestionSubmission, Role, Series, SourceArchive, Topic,
 } from '../shared/types.ts';
-import type { AdminRepo, EntityName, EntityRecord, Repository, Session, StaffUser } from './repo.ts';
+import type { AdminRepo, ArchiveInput, EntityName, EntityRecord, MediaCatalogRow, Repository, Session, StaffUser } from './repo.ts';
 
 type Row = Record<string, unknown>;
 const snake = (k: string) => k.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
@@ -41,6 +42,16 @@ function mapContent(r: Row): ContentItem {
   item.body = Array.isArray(item.body) ? item.body : [];
   item.provenance = Array.isArray(item.provenance) ? item.provenance : [];
   return item;
+}
+
+function normalizeArchive(data: Partial<ArchiveInput>): ArchiveInput {
+  return {
+    name: String(data.name ?? '').trim(),
+    material: String(data.material ?? '').trim(),
+    url: String(data.url ?? '').trim(),
+    verification: data.verification ?? 'archive',
+    note: String(data.note ?? '').trim() || null,
+  };
 }
 
 function fail(error: PostgrestError | null, context: string): never | void {
@@ -242,7 +253,12 @@ export async function createSupabaseRepository(): Promise<Repository> {
         q = entity === 'content' ? q.ilike('search_text', `%${term}%`) : entity === 'topics' || entity === 'institutions' ? q.ilike('name', `%${term}%`)
           : entity === 'publicQuestions' ? q.ilike('question_text', `%${term}%`) : q.ilike('title', `%${term}%`);
       }
-      const { data, error, count } = await q.order('updated_at', { ascending: false }).range((page - 1) * pageSize, page * pageSize - 1);
+      const sort = opts.sort ?? 'updated';
+      const titleCol = entity === 'topics' || entity === 'institutions' ? 'name' : entity === 'publicQuestions' ? 'question_text' : 'title';
+      if (sort === 'title') q = q.order(titleCol, { ascending: true });
+      else if (sort === 'status') q = q.order('status', { ascending: true }).order('updated_at', { ascending: false });
+      else q = q.order('updated_at', { ascending: false });
+      const { data, error, count } = await q.range((page - 1) * pageSize, page * pageSize - 1);
       fail(error, 'רשימה');
       const items = (data ?? []).map((r) => (entity === 'content' ? mapContent(r as unknown as Row) : fromRow<EntityRecord>(r as unknown as Row)));
       return { items, total: count ?? items.length, page, pageSize };
@@ -300,11 +316,85 @@ export async function createSupabaseRepository(): Promise<Repository> {
       fail(error, 'היסטוריה');
       return (data ?? []).map((r) => ({ version: r.version, createdAt: r.created_at, createdBy: r.created_by, snapshot: r.snapshot }));
     },
-    async audit(page) {
+    async audit(page, opts) {
       const pageSize = 50;
-      const { data, error, count } = await sb.from('audit_log').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range((page - 1) * pageSize, page * pageSize - 1);
+      let q = sb.from('audit_log').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+      if (opts?.q?.trim()) {
+        const term = opts.q.replace(/[%_,()]/g, ' ').trim();
+        q = q.or(`action.ilike.%${term}%,entity.ilike.%${term}%`);
+      }
+      const { data, error, count } = await q.range((page - 1) * pageSize, page * pageSize - 1);
       fail(error, 'יומן');
       return { items: (data ?? []).map((r) => ({ ...fromRow<import('./repo.ts').AuditEntry>(r), id: String(r.id) })), total: count ?? 0, page, pageSize };
+    },
+    async listMedia(opts) {
+      const page = opts.page ?? 1;
+      const pageSize = opts.pageSize ?? 25;
+      let q = sb.from('media_sources').select('id, content_id, provider, provider_id, kind, url, rights_status, content_items!inner(title, slug)', { count: 'exact' });
+      if (opts.kind) q = q.eq('kind', opts.kind);
+      if (opts.provider) q = q.eq('provider', opts.provider);
+      if (opts.q?.trim()) {
+        const term = opts.q.replace(/[%_,()]/g, ' ').trim();
+        q = q.or(`url.ilike.%${term}%,provider_id.ilike.%${term}%`);
+      }
+      q = q.order(opts.sort === 'provider' ? 'provider' : 'url', { ascending: true });
+      const { data, error, count } = await q.range((page - 1) * pageSize, page * pageSize - 1);
+      fail(error, 'מקורות מדיה');
+      const items: MediaCatalogRow[] = (data ?? []).map((r) => {
+        const parent = r.content_items as { title?: string; slug?: string } | { title?: string; slug?: string }[] | null;
+        const row = Array.isArray(parent) ? parent[0] : parent;
+        return {
+          id: String(r.id), contentId: String(r.content_id), contentTitle: row?.title ?? '', contentSlug: row?.slug ?? '',
+          provider: String(r.provider), providerId: r.provider_id ? String(r.provider_id) : null, kind: String(r.kind),
+          url: String(r.url), rightsStatus: String(r.rights_status),
+        };
+      });
+      return { items, total: count ?? items.length, page, pageSize };
+    },
+    async removeMedia(contentId, sourceId) {
+      const { data, error } = await sb.from('media_sources').select('*').eq('content_id', contentId);
+      fail(error, 'מקורות');
+      const sources = (data ?? []).map((r) => fromRow<MediaSource>(r));
+      if (!sources.some((s) => s.id === sourceId)) throw new Error('המקור לא נמצא');
+      await admin.saveSources(contentId, sources.filter((s) => s.id !== sourceId));
+    },
+    async listArchivesAdmin(opts) {
+      const page = opts.page ?? 1;
+      const pageSize = opts.pageSize ?? 25;
+      let q = sb.from('source_archives').select('*', { count: 'exact' });
+      if (opts.verification) q = q.eq('verification', opts.verification);
+      if (opts.q?.trim()) {
+        const term = opts.q.replace(/[%_,()]/g, ' ').trim();
+        q = q.or(`name.ilike.%${term}%,url.ilike.%${term}%,material.ilike.%${term}%`);
+      }
+      q = q.order(opts.sort === 'verification' ? 'verification' : 'name', { ascending: true });
+      const { data, error, count } = await q.range((page - 1) * pageSize, page * pageSize - 1);
+      fail(error, 'ארכיונים');
+      return { items: (data ?? []).map((r) => fromRow<SourceArchive>(r)), total: count ?? 0, page, pageSize };
+    },
+    async createArchive(data) {
+      const next = normalizeArchive(data);
+      const errors = validateArchive(next);
+      if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+      const { data: row, error } = await sb.from('source_archives').insert(toRow(next as unknown as Record<string, unknown>)).select('*').single();
+      fail(error, 'יצירת ארכיון');
+      return fromRow<SourceArchive>(row);
+    },
+    async updateArchive(id, patch) {
+      const { data: current, error: loadError } = await sb.from('source_archives').select('*').eq('id', id).maybeSingle();
+      fail(loadError, 'ארכיון');
+      if (!current) throw new Error('הארכיון לא נמצא');
+      const next = normalizeArchive({ ...fromRow<ArchiveInput>(current), ...patch });
+      const errors = validateArchive(next);
+      if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+      const { data: row, error } = await sb.from('source_archives').update(toRow(next as unknown as Record<string, unknown>)).eq('id', id).select('*').single();
+      fail(error, 'שמירת ארכיון');
+      return fromRow<SourceArchive>(row);
+    },
+    async deleteArchive(id) {
+      const { data, error } = await sb.from('source_archives').delete().eq('id', id).select('id');
+      fail(error, 'מחיקת ארכיון');
+      if (!data?.length) throw new PermissionError('מחיקת ארכיון מותרת לעורכים בלבד.');
     },
     async saveSources(contentId, sources) {
       const { data: existing, error } = await sb.from('media_sources').select('id').eq('content_id', contentId);
@@ -342,7 +432,14 @@ export async function createSupabaseRepository(): Promise<Repository> {
       const page = opts.page ?? 1;
       let q = sb.from('question_submissions').select('*', { count: 'exact' });
       if (opts.status) q = q.eq('status', opts.status);
-      const { data, error, count } = await q.order('created_at', { ascending: false }).range((page - 1) * 25, page * 25 - 1);
+      if (opts.q?.trim()) {
+        const term = opts.q.replace(/[%_,()]/g, ' ').trim();
+        q = q.or(`question_text.ilike.%${term}%,tracking_code.ilike.%${term}%`);
+      }
+      if (opts.sort === 'status') q = q.order('status', { ascending: true }).order('created_at', { ascending: false });
+      else if (opts.sort === 'code') q = q.order('tracking_code', { ascending: true });
+      else q = q.order('created_at', { ascending: false });
+      const { data, error, count } = await q.range((page - 1) * 25, page * 25 - 1);
       fail(error, 'שאלות');
       return { items: (data ?? []).map((r) => fromRow<QuestionSubmission>(r)), total: count ?? 0, page, pageSize: 25 };
     },

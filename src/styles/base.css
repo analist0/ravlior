@@ -23,7 +23,7 @@ h2 { font-size: var(--step-3); }
 h3 { font-size: var(--step-1); }
 p { margin: 0 0 var(--s-4); text-wrap: pretty; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
-::selection { background: color-mix(in srgb, var(--gold) 40%, transparent); }
+::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 bdi, .ltr { unicode-bidi: isolate; }
 .ltr { direction: ltr; display: inline-block; }
 

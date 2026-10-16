@@ -49,7 +49,7 @@ export function usePageVisible(): boolean {
   return visible;
 }
 
-/** Decorative hero art: book shelves and a warm lamp light. Pure SVG, no raster, no WebGL. */
+/** Decorative hero art: book spines and a quiet beam of light. Pure SVG, no raster, no WebGL. */
 export function HeroArt() {
   const { reducedMotion } = usePrefs();
   const visible = usePageVisible();

@@ -3,10 +3,11 @@ import { useSearchParams } from '../app/router.tsx';
 import { errorMessage, useAsync, useRepo } from '../data/repo.ts';
 import { useConfirm } from '../components/Dialog.tsx';
 import { useToast } from '../components/Toast.tsx';
-import { Button, ErrorState, Notice, Pagination, Skeleton, TextField, formatHebDate } from '../components/ui.tsx';
+import { Button, ErrorState, Notice, Pagination, SelectField, Skeleton, TextField, formatHebDate } from '../components/ui.tsx';
 import { ROLE_LABEL, isAdmin } from '../shared/workflow.ts';
 import { ROLES, type Role } from '../shared/types.ts';
 import { useAdmin } from './AdminApp.tsx';
+import { filterStaff } from './staff-filter.ts';
 
 export function UsersScreen() {
   const repo = useRepo();
@@ -15,6 +16,8 @@ export function UsersScreen() {
   const confirm = useConfirm();
   const r = useAsync(() => repo.admin.listUsers(), [repo]);
   const [email, setEmail] = useState('');
+  const [q, setQ] = useState('');
+  const [role, setRole] = useState('');
   if (!isAdmin(roles)) return <Notice tone="warn" icon="lock">ניהול משתמשים למנהלים בלבד.</Notice>;
   const toggle = async (userId: string, role: Role, grant: boolean) => {
     if ((role === 'owner' || role === 'admin') && !(await confirm({ title: grant ? `הענקת תפקיד ${ROLE_LABEL[role]}` : `הסרת תפקיד ${ROLE_LABEL[role]}`, body: 'תפקיד זה מעניק הרשאות ניהול רחבות.', confirmLabel: 'אישור', danger: true }))) return;
@@ -24,18 +27,30 @@ export function UsersScreen() {
     <div>
       <h1>משתמשים ותפקידים</h1>
       <Notice>הרשאות נאכפות במסד (טבלת user_roles ומדיניות RLS). רק בעלים מעניק תפקידי בעלים/מנהל. תפקיד „הרב” מאשר תשובות בשמו.</Notice>
+      <form className="admin-toolbar" role="search" onSubmit={(e) => e.preventDefault()}>
+        <div className="field">
+          <TextField label="חיפוש משתמש" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="דוא״ל או שם" />
+        </div>
+        <div className="field">
+          <SelectField label="תפקיד" value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="">הכול</option>
+            {ROLES.map((x) => <option key={x} value={x}>{ROLE_LABEL[x]}</option>)}
+          </SelectField>
+        </div>
+      </form>
       <form className="row" style={{ alignItems: 'end', margin: 'var(--s-4) 0' }} onSubmit={(e) => { e.preventDefault(); void repo.admin.inviteUser(email).then(() => { toast('ההזמנה נשלחה'); setEmail(''); r.reload(); }, (err) => toast(errorMessage(err), { tone: 'error' })); }}>
         <div className="grow"><TextField label="הזמנת משתמש בדוא״ל" type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
         <Button type="submit" icon="plus">הזמנה</Button>
       </form>
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <Skeleton h={200} />}
-      {r.data && (
+      {r.data && filterStaff(r.data, { q, role }).length === 0 && <Notice>אין משתמשים התואמים לחיפוש.</Notice>}
+      {r.data && filterStaff(r.data, { q, role }).length > 0 && (
         <div className="table-wrap">
           <table className="data">
             <thead><tr><th>משתמש</th>{ROLES.map((x) => <th key={x}>{ROLE_LABEL[x]}</th>)}</tr></thead>
             <tbody>
-              {r.data.map((u) => (
+              {filterStaff(r.data, { q, role }).map((u) => (
                 <tr key={u.userId}>
                   <td className="ltr">{u.email}{u.userId === session.userId ? ' (את/ה)' : ''}</td>
                   {ROLES.map((role) => (
@@ -58,14 +73,22 @@ export function UsersScreen() {
 export function AuditScreen() {
   const repo = useRepo();
   const { roles } = useAdmin();
-  const [params] = useSearchParams();
+  const [params, update] = useSearchParams();
   const page = Number(params.get('page') ?? 1) || 1;
-  const r = useAsync(() => repo.admin.audit(page), [page]);
+  const q = params.get('q') ?? '';
+  const [text, setText] = useState(q);
+  const r = useAsync(() => repo.admin.audit(page, { q }), [page, q]);
   if (!isAdmin(roles)) return <Notice tone="warn" icon="lock">יומן הפעולות זמין למנהלים בלבד.</Notice>;
   return (
     <div>
       <h1>יומן פעולות</h1>
       <p className="soft">היומן מוגן: נכתב רק על ידי המסד, ואינו שומר קודים סודיים או תוכן שאלות פרטיות.</p>
+      <form className="admin-toolbar" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: text, page: null }); }}>
+        <div className="field">
+          <label htmlFor="audit-q">חיפוש ביומן</label>
+          <input id="audit-q" className="input" type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="פעולה, ישות או משתמש" onBlur={() => text !== q && update({ q: text, page: null })} />
+        </div>
+      </form>
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <Skeleton h={200} />}
       {r.data && (
@@ -86,7 +109,12 @@ export function AuditScreen() {
               </tbody>
             </table>
           </div>
-          <Pagination page={page} total={r.data.total} pageSize={r.data.pageSize} hrefFor={(p) => `/admin/audit?page=${p}`} />
+          {r.data.items.length === 0 && <Notice>אין רשומות התואמות לחיפוש.</Notice>}
+          <Pagination page={page} total={r.data.total} pageSize={r.data.pageSize} hrefFor={(p) => {
+            const n = new URLSearchParams(params);
+            n.set('page', String(p));
+            return `/admin/audit?${n}`;
+          }} />
         </>
       )}
     </div>

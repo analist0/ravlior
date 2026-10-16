@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useRouter, useSearchParams } from '../app/router.tsx';
-import { errorMessage, useAsync, useRepo, type EntityName, type EntityRecord } from '../data/repo.ts';
+import { errorMessage, useAsync, useRepo, type EntityName, type EntityRecord, type ListSort } from '../data/repo.ts';
 import { useConfirm } from '../components/Dialog.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Button, EmptyState, ErrorState, Pagination, SelectField, Skeleton, TYPE_LABEL } from '../components/ui.tsx';
@@ -26,11 +26,12 @@ export default function EntityList({ entity }: { entity: EntityName }) {
   const status = (params.get('status') as ContentStatus) || '';
   const type = (params.get('type') as ContentType) || '';
   const view = params.get('view') === 'trash' ? 'trash' : 'active';
+  const sort = ((params.get('sort') as ListSort) || 'updated');
   const page = Number(params.get('page') ?? 1) || 1;
   const [text, setText] = useState(q);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const r = useAsync(() => repo.admin.list(entity, { q, status, type, view, page, pageSize: 25 }), [entity, q, status, type, view, page]);
+  const r = useAsync(() => repo.admin.list(entity, { q, status, type, view, page, pageSize: 25, sort }), [entity, q, status, type, view, page, sort]);
   const items = r.data?.items ?? [];
   const allSelected = items.length > 0 && items.every((i) => selected.has(i.id));
 
@@ -78,21 +79,26 @@ export default function EntityList({ entity }: { entity: EntityName }) {
     <div>
       <div className="spread">
         <h1>{cfg.label}{view === 'trash' && ' — סל מחזור'}</h1>
-        {canEdit(roles) && view === 'active' && entity !== 'publicQuestions' && <Button icon="plus" onClick={() => navigate(`/admin/${cfg.route}/new`)}>{cfg.singular} חדש</Button>}
+        {canEdit(roles) && view === 'active' && <Button icon="plus" onClick={() => navigate(`/admin/${cfg.route}/new`)}>{entity === 'publicQuestions' ? 'תשובה חדשה' : `${cfg.singular} חדש`}</Button>}
       </div>
       <form className="admin-toolbar" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: text, page: null }); }}>
         <div className="field">
           <label htmlFor="aq">חיפוש (ניהול)</label>
           <input id="aq" className="input" type="search" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => text !== q && update({ q: text, page: null })} />
         </div>
-        {'status' in (items[0] ?? { status: '' }) && (
-          <div className="field">
-            <SelectField label="סטטוס" value={status} onChange={(e) => update({ status: e.target.value, page: null })}>
-              <option value="">הכול</option>
-              {CONTENT_STATUSES.map((s) => <option key={s} value={s}>{CONTENT_STATUS_LABEL[s]}</option>)}
-            </SelectField>
-          </div>
-        )}
+        <div className="field">
+          <SelectField label="סטטוס" value={status} onChange={(e) => update({ status: e.target.value, page: null })}>
+            <option value="">הכול</option>
+            {CONTENT_STATUSES.map((s) => <option key={s} value={s}>{CONTENT_STATUS_LABEL[s]}</option>)}
+          </SelectField>
+        </div>
+        <div className="field">
+          <SelectField label="מיון" value={sort} onChange={(e) => update({ sort: e.target.value === 'updated' ? null : e.target.value, page: null })}>
+            <option value="updated">עודכן לאחרונה</option>
+            <option value="title">כותרת (א׳–ת׳)</option>
+            <option value="status">סטטוס</option>
+          </SelectField>
+        </div>
         {entity === 'content' && (
           <div className="field">
             <SelectField label="סוג" value={type} onChange={(e) => update({ type: e.target.value, page: null })}>
@@ -124,7 +130,13 @@ export default function EntityList({ entity }: { entity: EntityName }) {
 
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && !r.data && <Skeleton h={300} />}
-      {r.data && items.length === 0 && <EmptyState title={view === 'trash' ? 'סל המחזור ריק' : 'אין רשומות'} />}
+      {r.data && items.length === 0 && (
+        <EmptyState title={view === 'trash' ? 'סל המחזור ריק' : (q || status || type) ? 'אין תוצאות לחיפוש או לסינון' : 'אין רשומות'}>
+          {(q || status || type || sort !== 'updated') && (
+            <Button variant="secondary" onClick={() => { setText(''); update({ q: null, status: null, type: null, sort: null, page: null }); }}>ניקוי סינון</Button>
+          )}
+        </EmptyState>
+      )}
       {items.length > 0 && (
         <div className="table-wrap" aria-busy={r.loading}>
           <table className="data">

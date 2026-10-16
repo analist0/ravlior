@@ -21,6 +21,7 @@ const ModulesScreen = lazy(() => import('./Site.tsx').then((m) => ({ default: m.
 const UsersScreen = lazy(() => import('./People.tsx').then((m) => ({ default: m.UsersScreen })));
 const AuditScreen = lazy(() => import('./People.tsx').then((m) => ({ default: m.AuditScreen })));
 const MediaScreen = lazy(() => import('./MediaAdmin.tsx'));
+const ArchivesScreen = lazy(() => import('./ArchivesAdmin.tsx'));
 const ImportExport = lazy(() => import('./ImportExport.tsx'));
 
 interface AdminCtx { session: Session; roles: Role[]; modules: Record<string, boolean>; reloadModules: () => void }
@@ -55,6 +56,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     { to: '/admin/home', label: 'דף הבית', icon: 'home', module: 'home-builder' },
     { to: '/admin/menus', label: 'תפריטים', icon: 'menu', module: 'pages' },
     { to: '/admin/media', label: 'מדיה והעלאות', icon: 'upload', module: 'media' },
+    { to: '/admin/archives', label: 'ארכיוני מקור', icon: 'link', module: 'media' },
     { to: '/admin/import', label: 'ייבוא וייצוא', icon: 'download' },
     { to: '/admin/modules', label: 'מודולים', icon: 'settings', adminOnly: true },
   ] },
@@ -121,6 +123,7 @@ function AdminRoutes() {
     case '/admin/users': return <UsersScreen />;
     case '/admin/audit': return <AuditScreen />;
     case '/admin/media': return <MediaScreen />;
+    case '/admin/archives': return <ArchivesScreen />;
     case '/admin/import': return <ImportExport />;
   }
   return <ErrorState error="המסך לא נמצא" />;

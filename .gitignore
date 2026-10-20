@@ -10,3 +10,5 @@ import-jobs/
 termux-smoke-*.log
 .preview.pid
 .dev.pid
+.vercel
+.env*

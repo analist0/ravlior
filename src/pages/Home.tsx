@@ -8,7 +8,10 @@ import { Icon } from '../components/Icon.tsx';
 import { CardGrid, MediaPlayer } from '../components/Media.tsx';
 import { HeroArt, Reveal } from '../components/Motion.tsx';
 import { Badge, CardSkeletons, ErrorState, LinkButton, splitTitle, TYPE_LABEL } from '../components/ui.tsx';
+import { TopicCard } from '../components/TopicCard.tsx';
 import { formatDuration } from '../shared/media.ts';
+import { featuredShelf } from '../shared/topic-shelf.ts';
+import type { TopicShelf } from '../shared/topic-shelf.ts';
 import type { ContentItem, HomeSection } from '../shared/types.ts';
 
 function Actions() {
@@ -55,6 +58,18 @@ function Continue({ title }: { title: string }) {
   );
 }
 
+function HomeTopics({ shelves }: { shelves: TopicShelf[] }) {
+  const shown = shelves.slice(0, 8);
+  const lead = featuredShelf(shown);
+  return (
+    <ul className="topic-cards">
+      {shown.map((shelf) => (
+        <li key={shelf.id}><TopicCard shelf={shelf} featured={lead?.id === shelf.id} /></li>
+      ))}
+    </ul>
+  );
+}
+
 function Section({ s }: { s: HomeSection }) {
   const repo = useRepo();
   const limit = s.config.limit ?? 8;
@@ -72,7 +87,7 @@ function Section({ s }: { s: HomeSection }) {
         return { items: ext.items, questions: pq.slice(0, limit) };
       }
       case 'series': return { series: await repo.listSeries() };
-      case 'topics': return { topics: await repo.listTopics() };
+      case 'topics': return { shelves: await repo.topicShelves() };
       default: return {};
     }
   }, [s.id, s.kind, limit]);
@@ -93,7 +108,7 @@ function Section({ s }: { s: HomeSection }) {
                 <h2 id={id}><Link to={`/item/${item.slug}`} style={{ color: 'var(--text)', textDecoration: 'none' }}>{splitTitle(item.title)[0]}</Link></h2>
                 {splitTitle(item.title)[1] && <p className="muted">{splitTitle(item.title)[1]}</p>}
                 <div className="row">{item.durationText && <Badge>{item.durationText}</Badge>}<Badge tone="accent">וידאו</Badge></div>
-                <p style={{ marginTop: 'var(--s-4)' }}><LinkButton to={`/item/${item.slug}`} variant="secondary">לדף השיעור</LinkButton></p>
+                <p style={{ marginTop: 'var(--s-4)' }}><LinkButton to={`/item/${item.slug}`} tone="gold">לדף השיעור</LinkButton></p>
               </div>
             </div>
           ) : <CardSkeletons n={1} />}
@@ -133,20 +148,16 @@ function Section({ s }: { s: HomeSection }) {
         )}
         {s.kind === 'series' && data.data?.series && (
           <div className="grid-cards">
-            {data.data.series.map((x) => (
-              <Link key={x.id} to={`/series/${x.slug}`} className="action-tile" style={{ minHeight: 140 }}>
+            {data.data.series.slice(0, 4).map((x) => (
+              <Link key={x.id} to={`/series/${x.slug}`} className="action-tile series-card">
                 <Icon name="layers" />
-                <strong style={{ fontSize: 'var(--step-1)' }}>{x.title}</strong>
+                <strong>{x.title}</strong>
                 <span>{x.items.length} פריטים · {x.kind === 'system' ? 'רשימה שנבנתה באתר' : 'פלייליסט מקור'}</span>
               </Link>
             ))}
           </div>
         )}
-        {s.kind === 'topics' && data.data?.topics && (
-          <div className="row">
-            {data.data.topics.map((t) => <Link key={t.id} className="chip" to={`/topics/${t.slug}`}>{t.name}</Link>)}
-          </div>
-        )}
+        {s.kind === 'topics' && data.data && 'shelves' in data.data && data.data.shelves && <HomeTopics shelves={data.data.shelves} />}
       </div>
     </Reveal>
   );

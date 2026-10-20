@@ -689,6 +689,13 @@ export function robotsTxt(site: string): string {
 const STATIC_PAGES = new Set(['/', '/library', '/series', '/topics', '/books', '/responsa', '/ask', '/about', '/institutions', '/sources']);
 
 export function seoKind(pathname: string, search: URLSearchParams): SeoKind | null {
+  // Vercel rewrites land on the catch-all function (/api/[...route]); the target is carried in the query.
+  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/seo/')) {
+    const s = search.get('seo');
+    if (s === 'sitemap') pathname = search.get('group') ? `/api/seo/sitemap/${search.get('group')}` : '/api/seo/sitemap';
+    else if (s === 'robots' || s === 'indexnow-key') pathname = `/api/seo/${s}`;
+    else if (search.get('path')) pathname = '/api/seo/page';
+  }
   if (pathname === '/sitemap.xml' || pathname === '/api/seo/sitemap') return { type: 'sitemap-index' };
   const child = pathname.match(/^\/sitemap-([a-z]+)\.xml$/) ?? pathname.match(/^\/api\/seo\/sitemap\/([a-z]+)$/);
   if (child) return { type: 'sitemap', group: child[1] };

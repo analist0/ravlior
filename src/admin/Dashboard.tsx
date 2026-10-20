@@ -9,6 +9,36 @@ import { CONTENT_STATUS_LABEL, isAdmin } from '../shared/workflow.ts';
 import type { ContentStatus, EventRecord } from '../shared/types.ts';
 import { useAdmin } from './AdminApp.tsx';
 
+function Today({ stats, rabbi }: { stats: { questions: number | null; answered: number | null; contacts: number | null; scheduled: number; counts: readonly (readonly [ContentStatus, number])[] }; rabbi: boolean }) {
+  const review = stats.counts.find(([s]) => s === 'in_review')?.[1] ?? 0;
+  const actions = [
+    stats.answered != null && stats.answered > 0 ? { to: '/admin/questions?status=answered', n: stats.answered, title: 'תשובות שמחכות לאישור', text: 'רק אחרי אישור הן יכולות להימסר.' } : null,
+    stats.questions != null && stats.questions > 0 ? { to: '/admin/questions?status=submitted', n: stats.questions, title: 'שאלות חדשות למיון', text: 'עוד לא נכנסו לטיפול.' } : null,
+    review > 0 ? { to: '/admin/content?status=in_review', n: review, title: 'תכנים לבדיקה', text: 'ממתינים לעין לפני פרסום.' } : null,
+    stats.contacts != null && stats.contacts > 0 ? { to: '/admin/contact?status=new', n: stats.contacts, title: 'פניות חדשות לאתר', text: 'זו לא תיבת השאלות ההלכתיות.' } : null,
+    stats.scheduled > 0 ? { to: '/admin/content', n: stats.scheduled, title: 'פרסום מתוזמן', text: 'ייפתח מעצמו בזמן שנקבע.' } : null,
+  ].filter((a): a is { to: string; n: number; title: string; text: string } => !!a);
+  return (
+    <section className="today-desk" aria-labelledby="h-today">
+      <p className="eyebrow">{rabbi ? 'לרב' : 'ליום העבודה'}</p>
+      <h2 id="h-today">מה על השולחן</h2>
+      {actions.length === 0
+        ? <p className="soft" style={{ margin: 0 }}>אין כרגע משימה פתוחה. אפשר לעיין במצב הארכיון למטה.</p>
+        : (
+          <div className="today-actions">
+            {actions.map((a) => (
+              <Link key={a.to} to={a.to} className="today-action">
+                <strong>{a.n}</strong>
+                <span>{a.title}</span>
+                <span className="soft">{a.text}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+    </section>
+  );
+}
+
 export default function Dashboard() {
   const repo = useRepo();
   const { roles } = useAdmin();
@@ -43,7 +73,8 @@ export default function Dashboard() {
       {stats.loading && <Skeleton h={120} />}
       {stats.data && (
         <>
-          <h2 style={{ fontSize: 'var(--step-1)', marginTop: 'var(--s-6)' }}>תכנים לפי סטטוס</h2>
+          <Today stats={stats.data} rabbi={roles.includes('rabbi')} />
+          <h2 style={{ fontSize: 'var(--step-1)', marginTop: 'var(--s-6)' }}>מצב הארכיון</h2>
           <div className="admin-cards">
             {stats.data.counts.map(([s, n]) => (
               <Link key={s} to={`/admin/content?status=${s}`} className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}>

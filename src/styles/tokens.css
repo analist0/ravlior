@@ -20,6 +20,24 @@
   --red-700: #9f2d24;
   --green-700: #1f6b45;
 
+  /* Study hall: navy stage, gold actions, eight jewel shelves. White text on each jewel. */
+  --hall-950: #070e22;
+  --hall-900: #0b1730;
+  --hall-800: #132448;
+  --hall-ink: #f7f1e4;
+  --hall-muted: #d2cbb8;
+  --hall-gold: #e6c063;
+  --hall-gold-deep: #b8882e;
+  --hall-gold-ink: #1a1408;
+  --jewel-0: #16356e;
+  --jewel-1: #3c1d72;
+  --jewel-2: #0e4a34;
+  --jewel-3: #5c3d12;
+  --jewel-4: #5c1d38;
+  --jewel-5: #0d4552;
+  --jewel-6: #6a4510;
+  --jewel-7: #243044;
+
   --bg: var(--ivory-100);
   --bg-elevated: var(--ivory-50);
   --bg-sunken: var(--ivory-200);

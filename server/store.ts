@@ -249,6 +249,40 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
       }
       case 'topics.list':
         return (await sql(`select * from public.topics where deleted_at is null and status = 'published' order by sort`)).map((r) => fromRow<Topic>(r));
+      case 'topics.shelves': {
+        const rows = await sql(`select t.id, t.slug, t.name, t.description, t.auto,
+            (
+              select count(*)::int
+              from public.content_topics ct
+              join public.content_items c on c.id = ct.content_id
+              where ct.topic_id = t.id and c.status = 'published' and c.deleted_at is null and (c.publish_at is null or c.publish_at <= now())
+            ) as item_count,
+            prev.slug as preview_slug, prev.title as preview_title, prev.yt as preview_yt
+          from public.topics t
+          left join lateral (
+            select c.slug, c.title, (
+              select m.provider_id from public.media_sources m
+              where m.content_id = c.id and m.provider = 'youtube' and m.provider_id is not null
+              limit 1
+            ) as yt
+            from public.content_topics ct
+            join public.content_items c on c.id = ct.content_id
+            where ct.topic_id = t.id and c.status = 'published' and c.deleted_at is null and (c.publish_at is null or c.publish_at <= now())
+            order by c.catalog_order asc nulls last, c.title
+            limit 1
+          ) prev on true
+          where t.deleted_at is null and t.status = 'published'
+          order by t.sort`);
+        return rows.map((r) => ({
+          id: String(r.id),
+          slug: String(r.slug),
+          name: String(r.name),
+          description: r.description == null ? null : String(r.description),
+          auto: r.auto === true,
+          count: Number(r.item_count ?? 0),
+          preview: r.preview_slug ? { slug: String(r.preview_slug), title: String(r.preview_title), youtubeId: r.preview_yt ? String(r.preview_yt) : null } : null,
+        }));
+      }
       case 'series.list':
         return (await sql(`select s.*, coalesce((select jsonb_agg(jsonb_build_object('id', si.content_id, 'position', si.position) order by si.position) from public.series_items si where si.series_id = s.id), '[]'::jsonb) as items
           from public.series s where s.status = 'published' and s.deleted_at is null order by s.sort`)).map((r) => ({

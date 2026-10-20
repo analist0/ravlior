@@ -51,7 +51,7 @@ function Paragraph({ text, defined, placed }: { text: string; defined: Set<numbe
   );
 }
 
-export function BlockRenderer({ blocks, reading = false, anchorIds = false }: { blocks: Block[]; reading?: boolean; anchorIds?: boolean }) {
+export function BlockRenderer({ blocks, reading = false, anchorIds = false, headingIds }: { blocks: Block[]; reading?: boolean; anchorIds?: boolean; headingIds?: Readonly<Record<number, string>> }) {
   const { blocks: safe } = sanitizeBlocks(blocks);
   const chunks = safe.flatMap((b) => (b.type === 'paragraph' ? b.text.split(/\n{2,}/) : []));
   const notes = reading ? extractFootnotes(chunks).notes : [];
@@ -62,7 +62,7 @@ export function BlockRenderer({ blocks, reading = false, anchorIds = false }: { 
       {safe.map((b, i) => {
         switch (b.type) {
           case 'heading': {
-            const id = anchorIds ? `qa-${i}` : undefined;
+            const id = headingIds?.[i] ?? (anchorIds ? `qa-${i}` : undefined);
             return b.level === 2 ? <h2 key={i} id={id}>{b.text}</h2> : <h3 key={i} id={id}>{b.text}</h3>;
           }
           case 'paragraph': return b.text.split(/\n{2,}/).map((p, j) => <Paragraph key={`${i}-${j}`} text={p} defined={defined} placed={placed} />);

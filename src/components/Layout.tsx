@@ -198,7 +198,7 @@ export function BottomNav({ onSearch }: { onSearch: () => void }) {
   );
 }
 
-export function Footer({ menu }: { menu: Menu | undefined }) {
+export function Footer({ menu, updates = true }: { menu: Menu | undefined; updates?: boolean }) {
   return (
     <footer className="site-footer">
       <div className="container footer-grid">
@@ -213,9 +213,10 @@ export function Footer({ menu }: { menu: Menu | undefined }) {
         </div>
         <nav aria-label="קישורי תחתית">
           {(menu?.items ?? []).map((m) => <Link key={m.href} to={m.href}>{m.label}</Link>)}
+          <Link to="/support">תמיכה</Link>
           <Link to="/admin">כניסת צוות</Link>
         </nav>
-        <UpdatesForm />
+        {updates && <UpdatesForm />}
       </div>
     </footer>
   );

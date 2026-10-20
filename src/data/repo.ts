@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type DependencyList } from 'react';
 import type { SiteHit } from '../shared/site-search.ts';
+import type { TopicShelf } from '../shared/topic-shelf.ts';
 import type { UpdateInput } from '../shared/updates.ts';
 import type {
   Block, ContactMessage, ContactStatus, ContentItem, ContentQuery, ContentStatus, EventRecord, HomeSection, Institution, Menu, MediaSource, ModuleState,
@@ -141,6 +142,8 @@ export interface Repository {
   getContentByIds(ids: string[]): Promise<ContentItem[]>;
   related(item: ContentItem, limit: number): Promise<ContentItem[]>;
   listTopics(): Promise<Topic[]>;
+  /** Published counts and one newest lesson per topic. No view ranking. */
+  topicShelves(): Promise<TopicShelf[]>;
   listSeries(): Promise<Series[]>;
   getSeries(slug: string): Promise<{ series: Series; items: ContentItem[] } | null>;
   listInstitutions(): Promise<Institution[]>;

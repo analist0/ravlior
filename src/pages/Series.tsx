@@ -9,6 +9,7 @@ import { usePlayer } from '../player/PlayerProvider.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Breadcrumbs, Button, CardSkeletons, EmptyState, ErrorState, Notice, splitTitle } from '../components/ui.tsx';
 import { progressPct } from '../shared/hall.ts';
+import { PageIntro } from '../components/PageIntro.tsx';
 import { formatDuration } from '../shared/media.ts';
 import { useCanonicalRedirect } from '../app/redirect.tsx';
 import { usePrefs } from '../app/prefs.tsx';
@@ -25,9 +26,7 @@ export function SeriesList() {
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'סדרות' }]} />
-      <h1>סדרות</h1>
-      <Notice>רשימות שסומנו „נבנתה באתר” הן אוספים שיצרנו מכותרות הערוץ. אין בהן טענה שהן פלייליסט רשמי במקור.</Notice>
-      <div style={{ height: 'var(--s-5)' }} />
+      <PageIntro mark eyebrow="עיון" title="סדרות" lede="רשימה שסומנה „נבנתה באתר” היא אוסף מכותרות הערוץ. אין בה טענה שהיא פלייליסט רשמי במקור." />
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <CardSkeletons n={4} />}
       {r.data?.length === 0 && <EmptyState icon="layers" title="אין סדרות עדיין" />}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useHead } from '../app/head.ts';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
@@ -7,19 +7,27 @@ import { hostedPdf, hostedUrl } from '../components/Media.tsx';
 import { PdfViewer } from '../components/PdfViewer.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, splitTitle } from '../components/ui.tsx';
-import { bookJsonLd, bookOffers, bookSample, bookToc } from '../shared/sections.ts';
+import { ReadingProgress, ReadingTools } from '../components/Reading.tsx';
+import { bookJsonLd, bookOffers, bookSample, bookToc, linkHost, tocAnchors } from '../shared/sections.ts';
+import { sanitizeBlocks } from '../shared/blocks.ts';
 import { NotFound } from './NotFound.tsx';
 
 const PRINT = new Set(['book', 'leaflet', 'article']);
 
 export default function BookPage({ params }: { params: Record<string, string> }) {
   const repo = useRepo();
+  const articleRef = useRef<HTMLDivElement>(null);
+  const [readingScale, setReadingScale] = useState(1);
   const slug = params.slug ?? '';
   const r = useAsync(() => repo.getContent(slug), [slug]);
   const item = r.data && PRINT.has(r.data.type) ? r.data : null;
   const toc = bookToc(item?.bookDetails);
   const sample = bookSample(item?.bookDetails);
   const reading = sample.length ? sample : (item?.body ?? []);
+  const safeReading = sanitizeBlocks(reading).blocks;
+  const anchors = tocAnchors(safeReading, toc);
+  const headingIds: Record<number, string> = {};
+  for (const a of anchors) if (a.blockIndex != null) headingIds[a.blockIndex] = a.id;
   const offers = bookOffers(item?.bookDetails);
   const [title, sub] = splitTitle(item?.title ?? '');
   const jsonLd = useMemo(() => (item ? bookJsonLd(item, null) : undefined), [item]);
@@ -35,6 +43,8 @@ export default function BookPage({ params }: { params: Record<string, string> })
   if (!item) return <NotFound />;
   const d = item.bookDetails;
   return (
+    <div className="text-item" ref={articleRef} style={{ ['--reading-scale' as string]: readingScale }}>
+    <ReadingProgress target={articleRef} />
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'ספרים ועלונים', to: '/books' }, { label: title }]} />
       <div className="book-layout">
@@ -46,7 +56,7 @@ export default function BookPage({ params }: { params: Record<string, string> })
             <>
               <h2 style={{ fontSize: 'var(--step-0)' }}>תוכן העניינים</h2>
               <ol>
-                {toc.map((t) => <li key={t.id}><a href={`#${t.id}`}>{t.title}</a></li>)}
+                {anchors.map((t) => <li key={t.id}>{t.blockIndex == null ? <span>{t.title}</span> : <a href={`#${t.id}`}>{t.title}</a>}</li>)}
               </ol>
             </>
           )}
@@ -70,10 +80,10 @@ export default function BookPage({ params }: { params: Record<string, string> })
               <dt>קובץ</dt><dd>{d.pdfAccess === 'public' ? 'זמין לעיון' : d.pdfAccess === 'restricted' ? 'זמין בהרשאה בלבד' : 'אין קובץ זמין באתר'}</dd>
             </dl>
           )}
-          <section className="reading" aria-labelledby="h-read" style={{ marginTop: 'var(--s-6)' }}>
+          <div className="reading-tools" style={{ marginTop: 'var(--s-4)' }}><ReadingTools scale={readingScale} onScale={setReadingScale} /></div>
+          <section className="torah-sheet" aria-labelledby="h-read" style={{ marginTop: 'var(--s-4)' }}>
             <h2 id="h-read">{sample.length ? 'לקריאה לדוגמה' : 'קריאה'}</h2>
-            {reading.length ? <BlockRenderer blocks={reading} /> : <p className="soft">קטע לקריאה לא צורף. אין באתר ציטוט או תקציר שלא נשמר במפורש.</p>}
-            {toc.map((t) => <span key={t.id} id={t.id} />)}
+            {safeReading.length ? <BlockRenderer blocks={safeReading} reading headingIds={headingIds} /> : <p className="soft">קטע לקריאה לא צורף. אין באתר ציטוט או תקציר שלא נשמר במפורש.</p>}
             {hostedPdf(item) && <PdfViewer src={hostedUrl(hostedPdf(item)!)!} title={splitTitle(item.title)[0]} />}
           </section>
           {item.sources.length > 0 && (
@@ -81,7 +91,7 @@ export default function BookPage({ params }: { params: Record<string, string> })
               <h2>מקורות</h2>
               <ul>
                 {item.sources.map((s) => (
-                  <li key={s.id} className="soft">{(() => { try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch { return s.provider; } })()}{s.storagePath ? ' · מתארח באתר' : ''}</li>
+                  <li key={s.id} className="soft">{linkHost(s.url)}{s.storagePath ? ' · מתארח באתר' : ''}</li>
                 ))}
               </ul>
             </section>
@@ -90,6 +100,7 @@ export default function BookPage({ params }: { params: Record<string, string> })
           <p><Button variant="secondary" onClick={() => history.back()}>חזרה</Button> <Link to="/books">לכל הספרים</Link></p>
         </article>
       </div>
+    </div>
     </div>
   );
 }

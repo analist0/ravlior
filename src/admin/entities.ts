@@ -18,6 +18,8 @@ export interface EntityConfig {
   label: string;
   singular: string;
   route: string;
+  /** One plain sentence for a non-technical editor. */
+  guide?: string;
   titleOf: (r: EntityRecord) => string;
   publicPath?: (r: EntityRecord) => string | null;
   fields: FieldDef[];
@@ -30,6 +32,7 @@ const SLUG_HINT = 'חלק מכתובת העמוד. ריק = ייווצר אוט�
 export const ENTITIES: Record<EntityName, EntityConfig> = {
   content: {
     label: 'תכנים', singular: 'תוכן', route: 'content',
+    guide: 'טיוטה נשארת אצלכם. „לבדיקה” מעבירה לעורך. „פורסם” גלוי באתר. מחיקה עוברת לסל, ואפשר לשחזר.',
     titleOf: (r) => ('title' in r ? String(r.title) : ''),
     publicPath: (r) => ('slug' in r && 'type' in r ? `/item/${r.slug}` : null),
     defaults: { type: 'video', attributionStatus: 'source_page', verification: 'located', body: [], topicIds: [], featured: false },
@@ -55,6 +58,7 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
   },
   topics: {
     label: 'נושאים', singular: 'נושא', route: 'topics',
+    guide: 'שם הנושא מופיע במדף הציבורי. תיאור קצר עוזר למבקר לבחור, בלי להמציא עובדות על הרב.',
     titleOf: (r) => ('name' in r ? String(r.name) : ''),
     publicPath: (r) => ('slug' in r ? `/topics/${r.slug}` : null),
     defaults: { sort: 0 },
@@ -67,6 +71,7 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
   },
   series: {
     label: 'סדרות', singular: 'סדרה', route: 'series',
+    guide: '„נבנתה באתר” היא רשימה שלנו. „פלייליסט מקור” רק כשיש פלייליסט אמיתי וקישור אליו.',
     titleOf: (r) => ('title' in r ? String(r.title) : ''),
     publicPath: (r) => ('slug' in r ? `/series/${r.slug}` : null),
     defaults: { kind: 'system', sort: 0, items: [] },
@@ -81,6 +86,7 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
   },
   pages: {
     label: 'עמודים', singular: 'עמוד', route: 'pages',
+    guide: 'עמודים כמו נגישות, פרטיות וקשר. אל תוסיפו כאן ביוגרפיה או פרטי קשר שלא אושרו.',
     titleOf: (r) => ('title' in r ? String(r.title) : ''),
     publicPath: (r) => ('slug' in r ? (r.slug === 'about' ? '/about' : `/p/${r.slug}`) : null),
     defaults: { blocks: [] },
@@ -94,6 +100,7 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
   },
   institutions: {
     label: 'מוסדות', singular: 'מוסד', route: 'institutions',
+    guide: 'שם, תיאור ומקור. כתובת ומפה רק אם אומתו — שדה ריק לא מוצג באתר.',
     titleOf: (r) => ('name' in r ? String(r.name) : ''),
     publicPath: () => '/institutions',
     defaults: { sourceUrls: [] },
@@ -109,6 +116,7 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
   },
   events: {
     label: 'אירועים', singular: 'אירוע', route: 'events',
+    guide: 'תאריך רק אם צוין במקור. בלי תאריך האירוע נשאר ברשימה נפרדת ולא נכנס ללוח.',
     titleOf: (r) => ('title' in r ? String(r.title) : ''),
     publicPath: () => '/institutions',
     defaults: { sourceUrls: [] },

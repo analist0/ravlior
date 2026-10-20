@@ -9,7 +9,14 @@
 .admin-side.open { display: block; position: fixed; inset: 0 0 0 auto; width: min(300px, 86vw); z-index: 60; box-shadow: var(--shadow-3); }
 .admin-nav { display: grid; gap: 2px; margin-top: var(--s-4); }
 .admin-nav .group { font-size: 0.75rem; color: var(--admin-rail-muted); margin: var(--s-4) var(--s-3) var(--s-1); font-weight: 700; letter-spacing: 0.04em; }
-.admin-nav a { display: flex; gap: var(--s-2); align-items: center; padding: var(--s-2) var(--s-3); min-height: 40px; border-radius: var(--r-2); color: var(--admin-rail-text); text-decoration: none; font-size: var(--step--1); }
+.admin-nav a { display: flex; gap: var(--s-2); align-items: center; padding: var(--s-2) var(--s-3); min-height: var(--tap); border-radius: var(--r-2); color: var(--admin-rail-text); text-decoration: none; font-size: var(--step--1); }
+.today-desk { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-5); margin: var(--s-4) 0 var(--s-6); border-inline-start: 4px solid var(--accent); }
+.today-desk h2 { margin-bottom: var(--s-2); }
+.today-actions { display: grid; gap: var(--s-3); margin-top: var(--s-4); }
+@media (min-width: 700px) { .today-actions { grid-template-columns: 1fr 1fr; } }
+.today-action { display: grid; gap: 2px; min-height: var(--tap); padding: var(--s-4); border-radius: var(--r-2); background: var(--accent-soft); color: var(--text); text-decoration: none; border: 1px solid transparent; }
+.today-action:hover { border-color: var(--accent); }
+.today-action strong { font-family: var(--font-serif); font-size: var(--step-3); }
 .admin-nav a:hover { background: color-mix(in srgb, #fff 10%, transparent); color: var(--admin-rail-text); }
 .admin-nav a[aria-current='page'] { background: var(--admin-rail-active); color: var(--admin-rail-active-text); }
 .admin-side .brand, .admin-side .brand-name { color: var(--admin-rail-text); }

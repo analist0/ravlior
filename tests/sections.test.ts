@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   blocksToWriting, bookJsonLd, bookOffers, bookSample, bookToc, classifyEvent, eventIcs, eventJsonLd,
-  externalHref, googleCalendarUrl, hebrewDateFromIso, hebrewNumeral, isListed, monthGrid, partitionEvents,
-  revisionDiff, validateContact, writingToBlocks,
+  externalHref, googleCalendarUrl, hebrewDateFromIso, hebrewNumeral, isListed, linkHost, monthGrid, partitionEvents,
+  revisionDiff, tocAnchors, validateContact, writingToBlocks,
 } from '../src/shared/sections.ts';
 import type { Block, BookDetails, EventRecord } from '../src/shared/types.ts';
 
@@ -37,6 +37,21 @@ test('table of contents and sample appear only from stored fields', () => {
   assert.deepEqual(bookSample(book()), []);
   const sample: Block[] = [{ type: 'paragraph', text: 'קטע' }];
   assert.equal(bookSample(book({ sample })).length, 1);
+});
+
+test('chapter titles link only to a matching heading, in order', () => {
+  const loose = book();
+  (loose as { toc: unknown }).toc = ['פתיחה', 'פתיחה', 'אין בטקסט'];
+  const toc = bookToc(loose);
+  const anchors = tocAnchors([
+    { type: 'paragraph', text: 'לפני' },
+    { type: 'heading', text: 'פתיחה' },
+    { type: 'heading', text: 'אחר' },
+    { type: 'heading', text: 'פתיחה' },
+  ], toc);
+  assert.deepEqual(anchors.map((a) => a.blockIndex), [1, 3, null]);
+  assert.equal(linkHost('https://www.example.org/a'), 'example.org');
+  assert.equal(linkHost('not a url'), 'not a url');
 });
 
 test('scheduled publish_at hides a published row until that moment', () => {

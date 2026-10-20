@@ -72,7 +72,10 @@ export function isoDuration(sec: number | null | undefined): string | null {
 
 /** A date that was stated for the lesson. The site's own publish time is not a recording date. */
 export function lessonDate(item: ContentItem): string | null {
-  return item.sourcePublishedDate || item.eventDate || null;
+  // Rows read straight from Postgres (prerender) can carry Date objects for date columns.
+  const v = (item.sourcePublishedDate || item.eventDate || null) as unknown;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString().slice(0, 10);
+  return v == null ? null : String(v);
 }
 
 export function lessonDescription(item: ContentItem, title: string): string {

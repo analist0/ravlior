@@ -15,6 +15,7 @@ import { validateContact } from '../shared/sections.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
 import { applyAnswerEdit, applyPublicEdit, buildPublicFromApproved, isOverdue } from '../shared/responsa.ts';
 import { slugify } from '../shared/hebrew.ts';
+import { entityPath, followRedirect, publicSlug, rememberRedirect, type SeoRedirect } from '../shared/seo.ts';
 import { validateArchive } from '../shared/archives.ts';
 import { storagePath, BUCKETS, type BucketId } from '../shared/upload-policy.ts';
 import {
@@ -63,6 +64,7 @@ interface DemoDB {
   users: StaffUser[];
   templates?: { id: string; title: string; body: string }[];
   etaDays?: number;
+  redirects: SeoRedirect[];
 }
 
 const dbCategories = [
@@ -114,6 +116,7 @@ async function buildDb(load: SeedLoader): Promise<DemoDB> {
     revisions: [],
     audit: [],
     users: DEMO_USERS,
+    redirects: [],
   };
 }
 
@@ -121,6 +124,7 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
   let db: DemoDB = readJSON<DemoDB | null>(DB_KEY, null) ?? (await buildDb(load));
   if (db.schema !== 1) db = await buildDb(load);
   db.contactMessages ??= [];
+  if (!Array.isArray(db.redirects)) db.redirects = [];
   let session: Session | null = readJSON<Session | null>(SESSION_KEY, null);
   const listeners = new Set<(s: Session | null) => void>();
   const blobs = new Map<string, string>(); // demo uploads: path -> object URL (memory only)
@@ -260,6 +264,9 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       if (!p) return null;
       const related = db.publicQuestions.filter((x) => x.id !== p.id && !!p.topicId && x.topicId === p.topicId && isPublic(x) && !x.hidden).slice(0, 4).map(publicBank);
       return { ...publicBank(p), related };
+    },
+    async resolveRedirect(path) {
+      return followRedirect(db.redirects, path);
     },
     async getModules() { return clone(db.modules); },
 
@@ -429,6 +436,8 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       const { status, version: _v, id: _i, ...rest } = patch as Record<string, unknown>;
       void _v; void _i;
       if (status !== undefined && status !== (rec as { status: string }).status) throw new Error('שינוי סטטוס נעשה דרך פעולות תהליך העבודה');
+      if (typeof rest.slug === 'string') rest.slug = publicSlug(rest.slug);
+      const beforeSlug = 'slug' in rec ? String(rec.slug) : '';
       if ('slug' in rest && table(entity).some((r) => r.id !== id && 'slug' in r && r.slug === rest.slug)) throw new Error('הכתובת (slug) כבר קיימת.');
       if (entity === 'publicQuestions') {
         const next = applyPublicEdit(rec as PublicQuestion, { questionText: rest.questionText as string | undefined, answerBlocks: rest.answerBlocks as PublicQuestion['answerBlocks'] }, reason);
@@ -437,6 +446,13 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       }
       bump(entity, rec);
       Object.assign(rec, rest);
+      const afterSlug = 'slug' in rec ? String(rec.slug) : '';
+      const publishedStatus = 'status' in rec ? String(rec.status) : '';
+      if (beforeSlug && afterSlug && beforeSlug !== afterSlug && publishedStatus === 'published') {
+        const from = entityPath(entity, beforeSlug);
+        const to = entityPath(entity, afterSlug);
+        if (from && to) db.redirects = rememberRedirect(db.redirects, from, to);
+      }
       if (entity === 'content' && 'durationText' in rest) (rec as ContentItem).durationSeconds = parseDuration(rest.durationText as string);
       if (entity === 'content' && 'chapters' in rest) (rec as ContentItem).chapters = lessonChapters(rest.chapters);
       if (entity === 'content' && 'transcript' in rest) (rec as ContentItem).transcript = lessonTranscript(rest.transcript);

@@ -12,6 +12,10 @@ import { RateLimiter } from './lib/rate-limit.ts';
 import { readObject, uploadChunk } from './media-http.ts';
 import { guardedProbe, SsrfError, type ProbeResult } from './lib/ssrf.ts';
 import { notifyStaff } from './mailer.ts';
+import { indexNowTargets } from '../src/shared/seo.ts';
+import type { SeoCatalog } from '../src/shared/seo.ts';
+import { pingIndexNow } from './indexnow.ts';
+import { loadDefaultSeoCatalog, readShell, seoResponse } from './seo-http.ts';
 import { dispatch } from './store.ts';
 
 export interface Deps {
@@ -19,6 +23,9 @@ export interface Deps {
   client: DataClient | null;
   probe: (url: string, allow: string[]) => Promise<ProbeResult>;
   now: () => number;
+  /** Override the published catalog (tests). Production reads the database. */
+  seoCatalog?: () => Promise<SeoCatalog>;
+  indexNowFetch?: typeof fetch;
 }
 
 const contactMinute = new RateLimiter(60_000, 5);
@@ -234,8 +241,21 @@ async function rpc(req: Request, d: Deps): Promise<Response> {
   if (typeof body.op !== 'string' || !body.op) return err(400, 'חסרה פעולה');
   const token = tokenFrom(req);
   const user = token ? await d.client.userFromToken(token) : null;
-  const data = await dispatch(body.op, body.args && typeof body.args === 'object' ? body.args as Record<string, unknown> : {}, user?.id ?? null, d.env.authSecret);
+  const args = body.args && typeof body.args === 'object' ? body.args as Record<string, unknown> : {};
+  const data = await dispatch(body.op, args, user?.id ?? null, d.env.authSecret);
+  await notifySearch(d, body.op, args, data);
   return json({ data });
+}
+
+async function notifySearch(d: Deps, op: string, args: Record<string, unknown>, result: unknown): Promise<void> {
+  const urls = indexNowTargets(d.env.siteUrl, op, args, result);
+  if (!urls.length || !d.env.indexNowKey) return;
+  try {
+    const ping = await pingIndexNow({ siteUrl: d.env.siteUrl, key: d.env.indexNowKey, urls, fetchImpl: d.indexNowFetch });
+    if (!ping.skipped) console.log(`[indexnow] ${ping.status}`);
+  } catch {
+    console.log('[indexnow] failed');
+  }
 }
 
 async function media(req: Request, d: Deps): Promise<Response> {
@@ -265,6 +285,15 @@ async function media(req: Request, d: Deps): Promise<Response> {
 export async function handle(req: Request, ip = '0.0.0.0', deps: Deps = defaultDeps()): Promise<Response> {
   const { pathname } = new URL(req.url);
   try {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const seo = await seoResponse(req, {
+        siteUrl: deps.env.siteUrl,
+        indexNowKey: deps.env.indexNowKey,
+        catalog: () => deps.seoCatalog ? deps.seoCatalog() : loadDefaultSeoCatalog(deps.env.siteUrl),
+        shell: readShell(),
+      });
+      if (seo) return seo;
+    }
     if (pathname === '/api/health' && req.method === 'GET') return json({ ok: true, database: deps.env.configured ? 'configured' : 'not-configured' });
     if (pathname === '/api/questions' && req.method === 'POST') return await submitQuestion(req, deps, ip);
     if (pathname === '/api/questions/follow-up' && req.method === 'POST') return await followUp(req, deps, ip);

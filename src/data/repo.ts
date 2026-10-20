@@ -156,6 +156,8 @@ export interface Repository {
   getPublicQuestion(slug: string): Promise<PublicQuestion | null>;
   followUp(code: string, token: string, questionText: string): Promise<{ trackingCode: string; token: string }>;
   submitVoice(code: string, token: string, file: Blob): Promise<void>;
+  /** On-site path to follow after a slug change, or null. Never an external URL. */
+  resolveRedirect(path: string): Promise<string | null>;
   getModules(): Promise<ModuleState[]>;
   submitQuestion(input: QuestionInput): Promise<{ trackingCode: string; token: string }>;
   trackQuestion(code: string, token: string): Promise<TrackResult | null>;

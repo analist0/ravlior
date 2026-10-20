@@ -3,6 +3,7 @@ import { useHead } from '../app/head.ts';
 import { useLibraryState } from '../app/library-state.tsx';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
+import { homeJsonLd } from '../shared/seo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { CardGrid, MediaPlayer } from '../components/Media.tsx';
 import { HeroArt, Reveal } from '../components/Motion.tsx';
@@ -222,24 +223,7 @@ function Desk() {
 export function HomePage() {
   const repo = useRepo();
   const sections = useAsync(() => repo.getHomeSections(), [repo]);
-  const origin = SITE_URL || (typeof location !== 'undefined' ? location.origin : '');
-  useHead({
-    title: '',
-    description: 'ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול.',
-    path: '/',
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'WebSite',
-      name: 'אור המאיר',
-      inLanguage: 'he',
-      ...(origin ? { url: origin } : {}),
-      potentialAction: {
-        '@type': 'SearchAction',
-        target: `${origin}/library?q={query}`,
-        'query-input': 'required name=query',
-      },
-    },
-  });
+  useHead({ title: '', description: 'ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול.', path: '/', jsonLd: homeJsonLd(SITE_URL) });
   const enabled = (sections.data ?? []).filter((s) => s.enabled).sort((a, b) => a.position - b.position);
   const showActions = enabled.some((s) => s.kind === 'actions');
   return (

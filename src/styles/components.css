@@ -128,6 +128,8 @@
 /* ——— cards / list ——— */
 .grid-cards { display: grid; gap: var(--s-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
 .list-rows { display: grid; gap: var(--s-2); }
+/* Skip layout work for off-screen cards. The reserved size avoids a jump when they appear. */
+.grid-cards > *, .list-rows > * { content-visibility: auto; contain-intrinsic-size: auto 240px; }
 .card {
   position: relative; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-2); overflow: hidden;

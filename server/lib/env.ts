@@ -6,6 +6,7 @@ export interface ServerEnv {
   importAllowlist: string[];
   siteUrl: string;
   turnstileSecret: string;
+  indexNowKey: string;
   configured: boolean;
 }
 export function readEnv(env: Record<string, string | undefined> = process.env): ServerEnv {
@@ -18,6 +19,7 @@ export function readEnv(env: Record<string, string | undefined> = process.env): 
     importAllowlist: (env.IMPORT_URL_ALLOWLIST ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     siteUrl: (env.VITE_SITE_URL ?? env.SITE_URL ?? '').replace(/\/$/, ''),
     turnstileSecret: env.TURNSTILE_SECRET ?? '',
+    indexNowKey: (env.INDEXNOW_KEY ?? '').trim(),
     configured: databaseUrl.length > 0 && authSecret.length >= 16,
   };
 }

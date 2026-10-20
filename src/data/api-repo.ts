@@ -63,6 +63,7 @@ export async function createApiRepository(): Promise<Repository> {
     async submitVoice(code, token, file) {
       await call('/api/questions/voice-in', { method: 'POST', headers: { 'x-code': code, 'x-token': token, 'content-type': file.type || 'application/octet-stream' }, body: file });
     },
+    resolveRedirect: (path) => rpc('redirects.resolve', { path }),
     getModules: () => rpc('modules'),
     submitQuestion: (input: QuestionInput) => call('/api/questions', { method: 'POST', body: JSON.stringify(input) }),
     trackQuestion: (code, token) => rpc('track', { code, token }),

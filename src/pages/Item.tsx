@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
+import { useCanonicalRedirect } from '../app/redirect.tsx';
 import { useLibraryState } from '../app/library-state.tsx';
 import { Link, useSearchParams } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
@@ -12,8 +13,9 @@ import { usePlayer } from '../player/PlayerProvider.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, TYPE_LABEL, formatHebDate, splitTitle } from '../components/ui.tsx';
 import { NotFound } from './NotFound.tsx';
-import { lessonJsonLd, parseTimestamp } from '../shared/lesson.ts';
+import { parseTimestamp, lessonJsonLd } from '../shared/lesson.ts';
 import type { AttributionStatus, ContentItem, MediaSource, Series } from '../shared/types.ts';
+import { contentJsonLd } from '../shared/seo.ts';
 
 const ATTRIBUTION: Record<AttributionStatus, string> = {
   title_names_rabbi: 'כותרת הפרסום מציינת את הרב ליאור כהן',
@@ -87,35 +89,20 @@ export default function ItemPage({ params }: { params: Record<string, string> })
   }, [item, series.data]);
   const nextLesson = useAsync(() => (nextRef ? repo.getContentByIds([nextRef.nextId]) : Promise.resolve([])), [nextRef?.nextId, repo]);
   const [main, sub] = item ? splitTitle(item.title) : ['', null];
-  const origin = SITE_URL || location.origin;
-  const jsonLd = useMemo(() => {
-    if (!item || item.status !== 'published') return null;
-    const page = SITE_URL ? `${SITE_URL}/item/${item.slug}` : null;
-    const crumb = page ? {
-      '@type': 'BreadcrumbList',
-      itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'אודיטוריום', item: `${SITE_URL}/watch` },
-        { '@type': 'ListItem', position: 2, name: main, item: page },
-      ],
-    } : null;
-    return lessonJsonLd(item, main, page, crumb);
-  }, [item, main]);
+  const thumb = item ? thumbFor(item) : null;
+  const missing = !r.loading && !r.error && !item;
+  useCanonicalRedirect(missing, `/item/${params.slug ?? ''}`);
   useHead({
     title: main,
-    description: item ? (item.summary ?? sub ?? `${TYPE_LABEL[item.type]} — ${main}`).slice(0, 180) : null,
+    description: item ? (item.summary ?? sub ?? item.attributionNote ?? `${TYPE_LABEL[item.type]} — ${main}`).slice(0, 180) : null,
     path: item ? `/item/${item.slug}` : undefined,
-    image: item ? thumbFor(item) : null,
+    image: thumb,
+    imageAlt: main || null,
+    imageWidth: thumb ? 480 : null,
+    imageHeight: thumb ? 360 : null,
     type: item?.type === 'video' || item?.type === 'short' ? 'video.other' : 'article',
     noindex: item ? item.status !== 'published' : false,
-    jsonLd: jsonLd ?? (item && TEXT_TYPES.has(item.type) ? {
-      '@context': 'https://schema.org',
-      '@type': 'Article',
-      headline: main,
-      inLanguage: 'he',
-      description: (item.summary ?? sub ?? main).slice(0, 180),
-      ...(item.speaker ? { author: { '@type': 'Person', name: item.speaker } } : {}),
-      mainEntityOfPage: `${origin}/item/${item.slug}`,
-    } : undefined),
+    jsonLd: item && item.status === 'published' ? contentJsonLd(SITE_URL, item) : null,
   });
 
   if (r.loading) return <div className="container section"><Skeleton h={320} /><div style={{ height: 16 }} /><Skeleton h={32} w="60%" /></div>;
@@ -147,6 +134,7 @@ export default function ItemPage({ params }: { params: Record<string, string> })
               {item.verification === 'candidate' && <Badge tone="warn">ייחוס מועמד — טעון בדיקה</Badge>}
             </div>
             <h1 style={{ fontSize: 'var(--step-4)' }}>{main}</h1>
+            {item.type === 'answer' && <p><Link to="/responsa">לכל השאלות והתשובות</Link></p>}
             {sub && <p className="muted" style={{ fontSize: 'var(--step-1)' }}>{sub}</p>}
             <p className="soft">
               {item.speaker ?? 'ערוץ מוסדות אור המאיר'}

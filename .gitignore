@@ -12,3 +12,4 @@ termux-smoke-*.log
 .dev.pid
 .vercel
 .env*
+server/seo-shell.json

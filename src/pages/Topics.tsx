@@ -1,9 +1,12 @@
+import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
+import { useCanonicalRedirect } from '../app/redirect.tsx';
 import { usePrefs } from '../app/prefs.tsx';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { CardGrid } from '../components/Media.tsx';
 import { Breadcrumbs, CardSkeletons, EmptyState, ErrorState, Pagination, Notice } from '../components/ui.tsx';
+import { breadcrumbJsonLd } from '../shared/seo.ts';
 import { NotFound } from './NotFound.tsx';
 import { useSearchParams } from '../app/router.tsx';
 import { Icon, type IconName } from '../components/Icon.tsx';
@@ -95,7 +98,15 @@ export function TopicPage({ params }: { params: Record<string, string> }) {
   const topics = useAsync(() => repo.listTopics(), [repo]);
   const topic = topics.data?.find((t) => t.slug === params.slug);
   const r = useAsync(() => repo.listContent({ topic: params.slug, page, pageSize: 24 }), [params.slug, page]);
-  useHead({ title: topic?.name ?? 'נושא', description: topic ? `שיעורים ותכנים בנושא ${topic.name}` : null, path: `/topics/${params.slug}` });
+  const questions = useAsync(() => repo.listPublicQuestions(), [repo]);
+  const missing = !topics.loading && !topics.error && !topic;
+  useCanonicalRedirect(missing, `/topics/${params.slug ?? ''}`);
+  useHead({
+    title: topic?.name ?? 'נושא',
+    description: topic ? (topic.description || `שיעורים ותכנים בנושא ${topic.name}`) : null,
+    path: topic ? `/topics/${topic.slug}` : `/topics/${params.slug}`,
+    jsonLd: topic ? breadcrumbJsonLd(SITE_URL, [{ name: 'בית', path: '/' }, { name: 'נושאים', path: '/topics' }, { name: topic.name, path: `/topics/${topic.slug}` }]) : null,
+  });
   if (topics.loading) return <div className="container section"><CardSkeletons /></div>;
   if (!topic) return <NotFound />;
   return (
@@ -110,6 +121,12 @@ export function TopicPage({ params }: { params: Record<string, string> }) {
       <div style={{ height: 'var(--s-4)' }} />
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <CardSkeletons />}
+      {questions.data && questions.data.some((q) => q.topicId === topic.id) && (
+        <section style={{ marginTop: 'var(--s-6)' }} aria-labelledby="h-topic-q">
+          <h2 id="h-topic-q">שאלות ותשובות בנושא</h2>
+          <ul>{questions.data.filter((q) => q.topicId === topic.id).slice(0, 8).map((q) => <li key={q.id}><Link to={`/responsa/${q.slug}`}>{q.questionText.slice(0, 160)}</Link></li>)}</ul>
+        </section>
+      )}
       {r.data && (r.data.items.length ? (
         <>
           <CardGrid items={r.data.items} view={prefs.view} />

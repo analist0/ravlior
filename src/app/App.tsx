@@ -89,10 +89,11 @@ function Routes({ modules }: { modules: Record<string, boolean> }) {
   return <NotFound />;
 }
 
-function PublicShell({ repo }: { repo: Repository }) {
+function PublicShell({ repo }: { repo: Repository | null }) {
   const [searchOpen, setSearchOpen] = useState(false);
-  const menus = useAsync(() => repo.getMenus(), [repo]);
-  const mods = useAsync(() => repo.getModules(), [repo]);
+  const { loc } = useRouter();
+  const menus = useAsync(() => (repo ? repo.getMenus() : Promise.resolve([])), [repo]);
+  const mods = useAsync(() => (repo ? repo.getModules() : Promise.resolve([])), [repo]);
   const modules = Object.fromEntries((mods.data ?? []).map((m) => [m.id, m.enabled]));
   const header = menus.data?.find((m) => m.location === 'header');
   const footer = menus.data?.find((m) => m.location === 'footer');
@@ -111,22 +112,29 @@ function PublicShell({ repo }: { repo: Repository }) {
       removeEventListener('site-search', onAsk);
     };
   }, []);
+  useEffect(() => {
+    const main = document.getElementById('main');
+    if (main && document.activeElement !== document.body) main.focus({ preventScroll: true });
+  }, [loc.pathname]);
+  const page = repo ? (
+    <ErrorBoundary>
+      <Suspense fallback={<PageFallback />}>
+        <Routes modules={modules} />
+      </Suspense>
+    </ErrorBoundary>
+  ) : <PageFallback />;
+  // The provider is always mounted so the header is not recreated when the
+  // repository arrives. Search is mounted only once a repository exists.
   return (
-    <>
+    <RepoContext.Provider value={repo}>
       <a href="#main" className="skip-link">דילוג לתוכן</a>
       <DemoBanner />
       <Header menu={header} onSearch={() => setSearchOpen(true)} />
-      <main id="main" tabIndex={-1}>
-        <ErrorBoundary>
-          <Suspense fallback={<PageFallback />}>
-            <Routes modules={modules} />
-          </Suspense>
-        </ErrorBoundary>
-      </main>
+      <main id="main" tabIndex={-1}>{page}</main>
       <Footer menu={footer} />
       <BottomNav onSearch={() => setSearchOpen(true)} />
-      <SearchPanel open={searchOpen} onOpenChange={setSearchOpen} />
-    </>
+      {repo && <SearchPanel open={searchOpen} onOpenChange={setSearchOpen} />}
+    </RepoContext.Provider>
   );
 }
 
@@ -148,9 +156,10 @@ function Shell({ repo }: { repo: Repository }) {
   return <PublicShell repo={repo} />;
 }
 
-function RepoGate({ children }: { children: (repo: Repository) => ReactNode }) {
+function RepoGate() {
   const [repo, setRepo] = useState<Repository | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const { loc } = useRouter();
   useEffect(() => {
     const load = IS_DEMO
       ? import('../data/demo-repo.ts').then((m) => m.createDemoRepository())
@@ -158,8 +167,12 @@ function RepoGate({ children }: { children: (repo: Repository) => ReactNode }) {
     load.then(setRepo, (e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
   }, []);
   if (error) return <div className="container section"><ErrorState error={error} onRetry={() => location.reload()} /></div>;
+  const isAdmin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/');
+  // Public chrome stays mounted while the repository chunk loads, so the header
+  // does not appear late and push the page down.
+  if (!isAdmin) return <PublicShell repo={repo} />;
   if (!repo) return <PageFallback />;
-  return <RepoContext.Provider value={repo}>{children(repo)}</RepoContext.Provider>;
+  return <RepoContext.Provider value={repo}><Shell repo={repo} /></RepoContext.Provider>;
 }
 
 export function App() {
@@ -170,7 +183,7 @@ export function App() {
           <ConfirmProvider>
             <LibraryStateProvider>
               <PlayerProvider>
-                <RepoGate>{(repo) => <Shell repo={repo} />}</RepoGate>
+                <RepoGate />
               </PlayerProvider>
             </LibraryStateProvider>
           </ConfirmProvider>

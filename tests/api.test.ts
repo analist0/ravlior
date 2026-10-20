@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { ApiError } from '../server/db.ts';
 import { handle, type Deps } from '../server/handlers.ts';
+import { dispatch } from '../server/store.ts';
 import { sha256Hex } from '../src/shared/questions.ts';
 import { SsrfError } from '../server/lib/ssrf.ts';
 
@@ -149,6 +151,12 @@ test('contact: stores the message, refuses bots, and does not fake success offli
   offline.deps.env.configured = false;
   offline.deps.now = () => now;
   assert.equal((await handle(post('/api/contact', msg), '8.8.8.11', offline.deps)).status, 503);
+});
+
+test('malformed admin.get and admin.update return 400', async () => {
+  await assert.rejects(() => dispatch('admin.get', { entity: 'content', id: null }, 'user', 'secret'), (e: unknown) => e instanceof ApiError && e.status === 400);
+  await assert.rejects(() => dispatch('admin.update', { entity: 'content', id: '00000000-0000-4000-a000-000000000099', expectedVersion: 1 }, 'user', 'secret'), (e: unknown) => e instanceof ApiError && e.status === 400);
+  await assert.rejects(() => dispatch('admin.get', { entity: 'content', id: null }, null, 'secret'), (e: unknown) => e instanceof ApiError && e.status === 401);
 });
 
 test('admin users endpoint requires admin/owner', async () => {

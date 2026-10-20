@@ -35,6 +35,7 @@ npm run dev                                      # open http://127.0.0.1:5173 in
 | ws | 8.22.0 | WebSocket constructor for the Neon driver | https://github.com/websockets/ws | node >=10 | optional native addons not installed | typecheck ✔ (20.10.2026) | inferred | Pure JS fallback |
 | @fontsource/noto-serif-hebrew, @fontsource/assistant | 5.3.0 | self-hosted fonts (OFL-1.1), Hebrew subset | npm (license: OFL-1.1) | — | none (woff2 files) | not re-run on device | inferred | No external font service. Replaces Frank Ruhl Libre + Heebo; same package line (5.3.0), woff2 only |
 | @types/node | 22.20.4 | types | npm | — | none | ✔ | inferred | — |
+| uqr | 0.1.3 | QR matrix for the private track link | https://github.com/unjs/uqr | — | none (pure JS) | typecheck ✔ | inferred | Drawn as a CSS grid. The tracking secret is not sent to a QR service |
 
 **Deliberately not in the project:** SWC, sharp, lightningcss, workerd/Miniflare, better-sqlite3, Wrangler, Supabase CLI/Docker, Playwright (browser tests ran from a separate scratch directory in the cloud container only), and any HLS package (there are no HLS sources).
 

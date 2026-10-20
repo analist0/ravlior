@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from '../app/router.tsx';
 import { errorMessage, useAsync, useRepo } from '../data/repo.ts';
 import { useConfirm } from '../components/Dialog.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, EmptyState, ErrorState, Notice, Pagination, SelectField, Skeleton, TextArea, TextField, formatHebDate } from '../components/ui.tsx';
+import { TopicBars } from '../qa/pieces.tsx';
 import { audioFileLabel, isOverdue } from '../shared/responsa.ts';
 import { QUESTION_STATUS_LABEL, VersionConflictError, nextQuestionStatuses, questionTransitionNeedsReason } from '../shared/workflow.ts';
 import { QUESTION_STATUSES, type QuestionStatus } from '../shared/types.ts';
@@ -15,12 +16,50 @@ export function QuestionsInbox() {
   const [params, update] = useSearchParams();
   const status = (params.get('status') as QuestionStatus) || '';
   const q = params.get('q') ?? '';
+  const assignee = params.get('assignee') ?? '';
+  const overdue = params.get('overdue') === '1';
+  const open = params.get('open') ?? '';
   const sortParam = params.get('sort');
   const sort = sortParam === 'status' || sortParam === 'code' || sortParam === 'oldest' || sortParam === 'priority' ? sortParam : 'newest';
   const page = Number(params.get('page') ?? 1) || 1;
   const [text, setText] = useState(q);
-  const r = useAsync(() => repo.admin.listQuestions({ status, page, q, sort }), [status, page, q, sort]);
+  const [wide, setWide] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const r = useAsync(() => repo.admin.listQuestions({ status, page, q, sort, assignee, overdue }), [status, page, q, sort, assignee, overdue]);
   const stats = useAsync(() => repo.admin.questionStats(), [repo]);
+  const staff = useAsync(() => repo.admin.listStaff(), [repo]);
+  const topics = useAsync(() => repo.listTopics(), [repo]);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1100px)');
+    const apply = () => setWide(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || /INPUT|TEXTAREA|SELECT/.test(t.tagName) || t.isContentEditable) return;
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); return; }
+      if ((e.key !== 'j' && e.key !== 'k') || !wide) return;
+      const items = r.data?.items ?? [];
+      if (!items.length) return;
+      e.preventDefault();
+      const idx = items.findIndex((item) => item.id === open);
+      const next = e.key === 'j' ? Math.min(items.length - 1, Math.max(0, idx) + (idx < 0 ? 0 : 1)) : Math.max(0, idx <= 0 ? 0 : idx - 1);
+      const id = items[next]?.id;
+      if (id) update({ open: id });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [wide, open, r.data, update]);
+  const bars = (stats.data?.byTopic ?? []).map((row) => ({
+    label: topics.data?.find((t) => t.id === row.topicId)?.name ?? 'ללא נושא',
+    count: row.count,
+  }));
+  const openItem = (id: string) => {
+    if (wide) update({ open: id });
+  };
   return (
     <div>
       <h1>תיבת שאלות</h1>
@@ -28,20 +67,34 @@ export function QuestionsInbox() {
       {stats.data && (
         <div className="admin-cards" style={{ marginTop: 'var(--s-4)' }}>
           <div className="stat"><strong>{stats.data.open}</strong>פתוחות</div>
-          <div className="stat"><strong>{stats.data.pendingRabbi}</strong>ממתינות לרב</div>
-          <div className="stat"><strong>{stats.data.overdue}</strong>באיחור</div>
+          <Link to="/admin/questions?status=answered" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong>{stats.data.pendingRabbi}</strong>תור אישור הרב</Link>
+          <Link to="/admin/questions?overdue=1" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong>{stats.data.overdue}</strong>באיחור</Link>
           <div className="stat"><strong>{stats.data.avgResponseDays ?? '—'}</strong>ימים ממוצע עד מענה</div>
         </div>
       )}
+      {!!bars.length && <TopicBars rows={bars} />}
+      <p className="qa-kbd">קיצורי מקלדת: <span className="ltr">j</span> / <span className="ltr">k</span> בין שאלות במסך רחב, <span className="ltr">/</span> לחיפוש.</p>
       <form className="admin-toolbar" role="search" style={{ marginTop: 'var(--s-4)' }} onSubmit={(e) => { e.preventDefault(); update({ q: text, page: null }); }}>
         <div className="field">
           <label htmlFor="qq">חיפוש</label>
-          <input id="qq" className="input" type="search" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => text !== q && update({ q: text, page: null })} placeholder="טקסט או מספר מעקב" />
+          <input ref={searchRef} id="qq" className="input" type="search" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => text !== q && update({ q: text, page: null })} placeholder="טקסט או מספר מעקב" />
         </div>
         <div className="field">
           <SelectField label="סטטוס" value={status} onChange={(e) => update({ status: e.target.value, page: null })}>
             <option value="">הכול</option>
             {QUESTION_STATUSES.map((s) => <option key={s} value={s}>{QUESTION_STATUS_LABEL[s]}</option>)}
+          </SelectField>
+        </div>
+        <div className="field">
+          <SelectField label="מטפל" value={assignee} onChange={(e) => update({ assignee: e.target.value || null, page: null })}>
+            <option value="">כולם</option>
+            {staff.data?.map((s) => <option key={s.id} value={s.id}>{s.displayName}</option>)}
+          </SelectField>
+        </div>
+        <div className="field">
+          <SelectField label="יעד" value={overdue ? '1' : ''} onChange={(e) => update({ overdue: e.target.value || null, page: null })}>
+            <option value="">הכול</option>
+            <option value="1">באיחור בלבד</option>
           </SelectField>
         </div>
         <div className="field">
@@ -56,36 +109,40 @@ export function QuestionsInbox() {
       </form>
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <Skeleton h={200} />}
-      {r.data?.items.length === 0 && <EmptyState icon="ask" title={q || status ? 'אין שאלות התואמות לסינון' : 'אין שאלות'} />}
-      {!!r.data?.items.length && (
-        <div className="table-wrap">
-          <table className="data">
-            <thead><tr><th>מספר</th><th>שאלה</th><th>סטטוס</th><th>פרסום</th><th>התקבלה</th><th>יעד</th></tr></thead>
-            <tbody>
-              {r.data.items.map((q) => (
-                <tr key={q.id}>
-                  <td className="kbd"><Link to={`/admin/questions/${q.id}`}>{q.trackingCode}</Link></td>
-                  <td className="title-cell"><Link to={`/admin/questions/${q.id}`}>{q.questionText.slice(0, 90)}{q.questionText.length > 90 ? '…' : ''}</Link></td>
-                  <td><Badge tone="accent">{QUESTION_STATUS_LABEL[q.status]}</Badge></td>
-                  <td>{q.publishConsent ? <Badge tone="ok">הסכים</Badge> : <Badge>פרטי</Badge>}</td>
-                  <td>{formatHebDate(q.createdAt)}</td>
-                  <td>{isOverdue(q.dueAt, q.status) ? <Badge tone="danger">באיחור</Badge> : q.dueAt ? formatHebDate(q.dueAt) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {r.data?.items.length === 0 && <EmptyState icon="ask" title={q || status || assignee || overdue ? 'אין שאלות התואמות לסינון' : 'אין שאלות'} />}
+      <div className="qa-inbox-split" style={{ marginTop: 'var(--s-4)' }}>
+        <div>
+          {r.data?.items.map((item) => {
+            const body = (
+              <>
+                <span className="spread"><span className="kbd ltr">{item.trackingCode}</span>{isOverdue(item.dueAt, item.status) ? <Badge tone="danger">באיחור</Badge> : <Badge tone="accent">{QUESTION_STATUS_LABEL[item.status]}</Badge>}</span>
+                <strong>{item.questionText.slice(0, 110)}{item.questionText.length > 110 ? '…' : ''}</strong>
+                <span className="soft">{formatHebDate(item.createdAt)} · {item.publishConsent ? 'הסכים לפרסום' : 'פרטי'}</span>
+              </>
+            );
+            return wide ? (
+              <button key={item.id} type="button" className="qa-q" aria-current={open === item.id ? 'true' : undefined} onClick={() => openItem(item.id)}>
+                <span className="stack">{body}</span>
+              </button>
+            ) : (
+              <Link key={item.id} className="qa-q" to={`/admin/questions/${item.id}`} style={{ display: 'block', textDecoration: 'none' }}>
+                <span className="stack">{body}</span>
+              </Link>
+            );
+          })}
+          {r.data && <Pagination page={page} total={r.data.total} pageSize={25} hrefFor={(p) => {
+            const n = new URLSearchParams(params);
+            n.set('page', String(p));
+            return `/admin/questions?${n}`;
+          }} />}
         </div>
-      )}
-      {r.data && <Pagination page={page} total={r.data.total} pageSize={25} hrefFor={(p) => {
-        const n = new URLSearchParams(params);
-        n.set('page', String(p));
-        return `/admin/questions?${n}`;
-      }} />}
+        {wide && open && <div className="qa-inbox-detail"><QuestionDetail id={open} embedded /></div>}
+      </div>
     </div>
   );
 }
 
-export function QuestionDetail({ id }: { id: string }) {
+export function QuestionDetail({ id, embedded = false }: { id: string; embedded?: boolean }) {
   const repo = useRepo();
   const { roles } = useAdmin();
   const toast = useToast();
@@ -134,7 +191,7 @@ export function QuestionDetail({ id }: { id: string }) {
   return (
     <div>
       <Breadcrumbs items={[{ label: 'ניהול', to: '/admin' }, { label: 'תיבת שאלות', to: '/admin/questions' }, { label: q.trackingCode }]} />
-      <div className="spread"><h1 className="kbd" style={{ fontFamily: 'inherit' }}>שאלה {q.trackingCode}</h1><Badge tone="accent">{QUESTION_STATUS_LABEL[q.status]}</Badge></div>
+      <div className="spread">{embedded ? <h2 className="kbd" style={{ fontFamily: 'inherit' }}>שאלה {q.trackingCode}</h2> : <h1 className="kbd" style={{ fontFamily: 'inherit' }}>שאלה {q.trackingCode}</h1>}<Badge tone="accent">{QUESTION_STATUS_LABEL[q.status]}</Badge></div>
       {error && <div role="alert"><Notice tone="warn" icon="alert">{error}</Notice></div>}
       {note && <Notice>{note}</Notice>}
       <div className="editor-grid" style={{ marginTop: 'var(--s-4)' }}>
@@ -227,10 +284,12 @@ export function QuestionDetail({ id }: { id: string }) {
         <aside className="stack">
           <section className="panel">
             <h2>תהליך</h2>
-            <ol style={{ paddingInlineStart: 'var(--s-5)', fontSize: 'var(--step--1)' }}>
-              {(['submitted', 'triaged', 'assigned', 'answered', 'approved', 'private_delivered', 'closed'] as QuestionStatus[]).map((s) => (
-                <li key={s} style={{ fontWeight: s === q.status ? 700 : 400 }}>{QUESTION_STATUS_LABEL[s]}</li>
-              ))}
+            <ol className="qa-timeline">
+              {(['submitted', 'triaged', 'assigned', 'answered', 'approved', 'private_delivered', 'closed'] as QuestionStatus[]).map((s, i, all) => {
+                const at = all.indexOf(q.status);
+                const state = i < at ? 'done' : i === at ? 'current' : 'todo';
+                return <li key={s} data-state={state} aria-current={i === at ? 'step' : undefined}><span className="qa-timeline-mark" aria-hidden="true">{i < at ? '✓' : i + 1}</span><span>{QUESTION_STATUS_LABEL[s]}</span></li>;
+              })}
             </ol>
             <div className="stack">
               <TextField label="סיבה ליומן" value={reason} onChange={(e) => setReason(e.target.value)} hint="חובה בהחזרה מאישור או בהסרת פרסום." />

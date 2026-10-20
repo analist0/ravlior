@@ -8,6 +8,8 @@
 }
 .btn:hover { background: var(--accent-hover); color: var(--accent-contrast); }
 .btn:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
+:root[data-motion='reduce'] .btn:active { transform: none; }
 .btn[disabled], .btn[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; transform: none; }
 .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
 .btn-secondary:hover { background: var(--bg-sunken); color: var(--text); }

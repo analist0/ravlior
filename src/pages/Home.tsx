@@ -158,9 +158,11 @@ function WeekQuestion() {
   const q = week.data;
   return (
     <section className="section container" aria-labelledby="week-q">
-      <p className="eyebrow">שאלת השבוע</p>
-      <h2 id="week-q"><Link to={`/responsa/${q.slug}`} style={{ color: 'var(--text)', textDecoration: 'none' }}>{q.questionText.slice(0, 180)}</Link></h2>
-      <p className="soft">{q.attribution}</p>
+      <Link className="qa-card qa-week" to={`/responsa/${q.slug}`}>
+        <p className="eyebrow">שאלת השבוע</p>
+        <h2 id="week-q">{q.questionText.slice(0, 180)}</h2>
+        <p className="soft">{q.attribution}</p>
+      </Link>
     </section>
   );
 }

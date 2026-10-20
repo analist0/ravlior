@@ -193,6 +193,8 @@ select pg_temp.back();
 -- ——— Hebrew normalization parity with src/shared/hebrew.ts (tests/hebrew.test.ts uses the same inputs) ———
 select pg_temp.ok(public.he_normalize('עוּלוּ אוּשְׁפִּיזִין') = 'עולו אושפיזינ', 'he_normalize strips niqqud and folds final letters (matches JS)');
 select pg_temp.ok(public.he_normalize('זצ"ל') = public.he_normalize('זצ״ל') and public.he_normalize('ט"ו באב') = 'טו באב', 'he_normalize ignores geresh/gershayim (matches JS)');
+select pg_temp.ok(public.he_skeleton('תפילה') = public.he_skeleton('תפלה') and public.he_skeleton('מצווה') = public.he_skeleton('מצוה'),
+  'he_skeleton folds ktiv male and haser (matches JS)');
 
 -- ——— P0: lock, re-approval, unpublish ———
 select pg_temp.back();
@@ -219,6 +221,14 @@ select pg_temp.ok(pg_temp.raises($$insert into public.public_questions (slug, qu
   'an edited public question cannot be marked approved until the rabbi re-approves');
 update public.public_questions set status = 'approved', version = 1 where slug = 'qa-match';
 update public.public_questions set status = 'published', version = 2 where slug = 'qa-match';
+select pg_temp.ok((select status = 'published' from public.question_submissions where tracking_code = 'TEST-0002'),
+  'publishing a linked public entry locks the source question');
+select pg_temp.back();
+select pg_temp.act('00000000-0000-4000-a000-000000000005', 'app_api');
+select pg_temp.ok(pg_temp.raises($$update public.question_submissions set answer_text = 'אחרי פרסום ציבורי', version = 4 where tracking_code = 'TEST-0002'$$, '42501'),
+  'source answer is locked once its public entry is published');
+select pg_temp.back();
+select pg_temp.act('00000000-0000-4000-a000-000000000002', 'app_api');
 select pg_temp.ok(pg_temp.raises($$update public.public_questions set question_text = 'נוסח אחרי פרסום', version = 3 where slug = 'qa-match'$$, '42501'),
   'unpublishing by editing a published answer requires an audit reason');
 select set_config('app.audit_reason', 'הסרת פרסום לעריכה', true);
@@ -227,22 +237,45 @@ select pg_temp.ok((select status = 'draft' and approved_by_rabbi = false from pu
   'editing a published answer unpublishes it and clears rabbi approval');
 select pg_temp.back();
 
+select pg_temp.back();
+insert into public.question_submissions (id, tracking_code, token_hash, question_text, publish_consent, status, answer_text, approved_by)
+values ('20000000-0000-4000-a000-000000000004', 'TEST-0004', encode(extensions.digest('z'||repeat('s', 40), 'sha256'), 'hex'),
+        'שאלה מקורית לאישור חוזר', true, 'approved', 'נוסח ששונה', '00000000-0000-4000-a000-000000000005');
+select pg_temp.act('00000000-0000-4000-a000-000000000002', 'app_api');
+insert into public.public_questions (slug, question_text, answer_blocks, attribution, approved_by_rabbi, status, source_submission_id)
+values ('qa-reword', 'ניסוח ציבורי שונה', '[{"type":"paragraph","text":"נוסח ששונה"}]'::jsonb, 'בדיקה', false, 'in_review', '20000000-0000-4000-a000-000000000004');
+select pg_temp.back();
+select pg_temp.act('00000000-0000-4000-a000-000000000005', 'app_api');
+update public.public_questions set approved_by_rabbi = true, version = 1 where slug = 'qa-reword';
+update public.public_questions set status = 'approved', version = 2 where slug = 'qa-reword';
+update public.public_questions set status = 'published', version = 3 where slug = 'qa-reword';
+select pg_temp.ok((select status = 'published' from public.question_submissions where tracking_code = 'TEST-0004'),
+  're-approved public entry locks the source question on publish');
+select pg_temp.ok(pg_temp.raises($$update public.question_submissions set answer_text = 'עדיין פתוח', version = 2 where tracking_code = 'TEST-0004'$$, '42501'),
+  'source answer stays locked after the re-approved entry is published');
+select pg_temp.back();
+
+select pg_temp.back();
+insert into public.question_submissions (id, tracking_code, token_hash, question_text, publish_consent, status, answer_text, approved_by)
+values ('20000000-0000-4000-a000-000000000003', 'TEST-0003', encode(extensions.digest('w'||repeat('s', 40), 'sha256'), 'hex'),
+        'שאלה להחזרה', true, 'approved', 'תשובה להחזרה', '00000000-0000-4000-a000-000000000005');
 select pg_temp.act('00000000-0000-4000-a000-000000000005', 'app_api');
 select set_config('app.audit_reason', '', true);
-select pg_temp.ok(pg_temp.raises($$update public.question_submissions set status = 'assigned', version = 3 where tracking_code = 'TEST-0002'$$, '42501'),
+select pg_temp.ok(pg_temp.raises($$update public.question_submissions set status = 'assigned', version = 1 where tracking_code = 'TEST-0003'$$, '42501'),
   'approved -> assigned requires an audit reason');
+select pg_temp.act('00000000-0000-4000-a000-000000000005', 'app_api');
 select set_config('app.audit_reason', 'החזרה לטיפול', true);
-update public.question_submissions set status = 'assigned', version = 3 where tracking_code = 'TEST-0002';
-select pg_temp.ok((select status = 'assigned' and approved_by is null from public.question_submissions where tracking_code = 'TEST-0002'),
+update public.question_submissions set status = 'assigned', version = 1 where tracking_code = 'TEST-0003';
+select pg_temp.ok((select status = 'assigned' and approved_by is null from public.question_submissions where tracking_code = 'TEST-0003'),
   'approved -> assigned is allowed with an audit reason');
 select pg_temp.back();
-select pg_temp.ok(exists (select 1 from public.audit_log where entity = 'question_submissions' and meta->>'reason' = 'החזרה לטיפול' and meta::text not like '%נוסח ששונה%'),
+select pg_temp.ok(exists (select 1 from public.audit_log where entity = 'question_submissions' and meta->>'reason' = 'החזרה לטיפול' and meta::text not like '%תשובה להחזרה%'),
   'audit stores the reason and not the answer text');
 select pg_temp.act('00000000-0000-4000-a000-000000000005', 'app_api');
-update public.question_submissions set status = 'answered', version = 4 where tracking_code = 'TEST-0002';
-update public.question_submissions set status = 'approved', version = 5 where tracking_code = 'TEST-0002';
-update public.question_submissions set status = 'private_delivered', version = 6 where tracking_code = 'TEST-0002';
-select pg_temp.ok(pg_temp.raises($$update public.question_submissions set answer_text = 'אחרי מסירה', version = 7 where tracking_code = 'TEST-0002'$$, '42501'),
+update public.question_submissions set status = 'answered', version = 2 where tracking_code = 'TEST-0003';
+update public.question_submissions set status = 'approved', version = 3 where tracking_code = 'TEST-0003';
+update public.question_submissions set status = 'private_delivered', version = 4 where tracking_code = 'TEST-0003';
+select pg_temp.ok(pg_temp.raises($$update public.question_submissions set answer_text = 'אחרי מסירה', version = 5 where tracking_code = 'TEST-0003'$$, '42501'),
   'answer text is locked after delivery');
 select pg_temp.back();
 

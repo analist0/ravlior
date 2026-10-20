@@ -96,7 +96,7 @@ export interface AdminRepo {
   saveHomeSections(sections: HomeSection[]): Promise<HomeSection[]>;
   setModule(id: string, enabled: boolean, settings: Record<string, unknown>): Promise<void>;
 
-  listQuestions(opts: { status?: QuestionStatus | ''; page?: number; q?: string; sort?: 'newest' | 'oldest' | 'status' | 'code' | 'priority' }): Promise<PageResult<QuestionSubmission>>;
+  listQuestions(opts: { status?: QuestionStatus | ''; page?: number; q?: string; sort?: 'newest' | 'oldest' | 'status' | 'code' | 'priority'; assignee?: string; overdue?: boolean }): Promise<PageResult<QuestionSubmission>>;
   getQuestion(id: string): Promise<QuestionSubmission | null>;
   updateQuestion(id: string, patch: Partial<QuestionSubmission>, expectedVersion: number): Promise<QuestionSubmission>;
   transitionQuestion(id: string, to: QuestionStatus, expectedVersion: number, reason?: string): Promise<QuestionSubmission>;
@@ -148,7 +148,7 @@ export interface Repository {
   getMenus(): Promise<Menu[]>;
   getHomeSections(): Promise<HomeSection[]>;
   listPublicQuestions(q?: string): Promise<PublicQuestion[]>;
-  searchResponsa(opts: { q?: string; topic?: string; category?: string; page?: number }): Promise<PageResult<PublicQuestion>>;
+  searchResponsa(opts: { q?: string; topic?: string; category?: string; page?: number; sort?: 'relevance' | 'latest' }): Promise<PageResult<PublicQuestion>>;
   suggestQuestions(q: string): Promise<{ slug: string; questionText: string }[]>;
   listCategories(): Promise<{ id: string; slug: string; name: string }[]>;
   weekQuestion(): Promise<PublicQuestion | null>;

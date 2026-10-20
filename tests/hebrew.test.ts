@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { heMatches, heNormalize, slugify } from '../src/shared/hebrew.ts';
+import { heMatches, heNormalize, heSkeleton, slugify } from '../src/shared/hebrew.ts';
 
 test('niqqud, geresh/gershayim and final letters are normalized', () => {
   assert.equal(heNormalize('עוּלוּ אוּשְׁפִּיזִין'), 'עולו אושפיזינ');
@@ -12,6 +12,15 @@ test('niqqud, geresh/gershayim and final letters are normalized', () => {
 test('search: tokens AND, niqqud-insensitive; no morphology promised', () => {
   assert.ok(heMatches('מעלת האושפיזין ומענייני ברכת לישב בסוכה', 'אוּשְׁפִּיזִין'));
   assert.ok(heMatches('הלכות קריאת מגילה בזמני אזעקה', 'מגילה אזעקה'));
+  assert.ok(!heMatches('הלכות קריאת מגילה', 'מגילה שופר'));
+});
+
+test('ktiv male and haser share a skeleton', () => {
+  assert.equal(heSkeleton('תפילה'), heSkeleton('תפלה'));
+  assert.equal(heSkeleton('מצווה'), heSkeleton('מצוה'));
+  assert.equal(heSkeleton('שבוע'), 'שבע');
+  assert.ok(heMatches('הלכות תפילה', 'תפלה'));
+  assert.ok(heMatches('ברכת המזון ומצוה', 'מצווה'));
   assert.ok(!heMatches('הלכות קריאת מגילה', 'מגילה שופר'));
 });
 

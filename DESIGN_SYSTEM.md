@@ -32,7 +32,7 @@ Checked pairs (text on its surface) are at least 4.5:1. Large UI chrome (buttons
 
 ## Dark mode
 
-`prefers-color-scheme` by default, or `data-theme` on `<html>` before paint (`public/theme-init.js`). The footer is evergreen ink in both themes, with light link text.
+`prefers-color-scheme` by default, or `data-theme` on `<html>` before paint (inline script in `index.html`). The footer is evergreen ink in both themes, with light link text.
 
 ## Components (`src/components`)
 
@@ -60,3 +60,13 @@ The owner-supplied banner stays. Below it, a typographic hero with a copper-to-e
 ## RTL and bidi
 
 `<html lang="he" dir="rtl">`. Durations, codes and URLs use `.ltr` / `dir="ltr"`. Logical properties (`inset-inline`, `margin-inline`, `padding-inline-start`) throughout.
+
+## Q&A
+
+The ask flow is a four-step wizard (shelf, question, privacy, contact) in `src/pages/Ask.tsx`. The private tracking link is drawn as a QR grid from `uqr` on the page. `--qr-ink` and `--qr-paper` do not change in dark mode, so the code stays scannable. The link is never sent to a third-party QR service.
+
+The public bank uses the existing eight halacha shelves, pagination, and a real “אחרונים” sort. There is no “most read” ranking, because reads are not collected. Empty states stay empty: no sample questions are invented.
+
+Track status is a public timeline (received, in review, answered, approved by the rabbi, delivered) mapped from the stored workflow statuses. The staff inbox keeps those stored labels. On wide screens the inbox is a list plus the existing question editor; on a phone each row opens the question route. Audio peaks are decoded from the file after it loads. Until then the bars are flat.
+
+Motion on the new panels is opacity only, and only when reduced motion is off. Print hides the site chrome.

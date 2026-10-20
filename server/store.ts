@@ -161,9 +161,18 @@ export async function loadPrerender(sql: Sql) {
   return { content, topics, series, pages, questions, institutions, events };
 }
 
+function requireId(id: unknown): string {
+  if (typeof id !== 'string' || !id.trim()) throw new ApiError(400, 'חסר מזהה');
+  return id;
+}
+
 async function run(userId: string | null, op: string, a: Record<string, unknown>, secret: string): Promise<unknown> {
   const admin = op.startsWith('admin.');
   if (admin && !userId) throw new ApiError(401, 'נדרשת כניסה');
+  if (op === 'admin.get') requireId(a.id);
+  if (op === 'admin.update' && (a.patch == null || typeof a.patch !== 'object' || Array.isArray(a.patch))) {
+    throw new ApiError(400, 'חסר עדכון');
+  }
   return withActor(userId, async (sql) => {
     if (admin) await staff(sql);
     switch (op) {
@@ -238,10 +247,30 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
       case 'pq.search': {
         const page = Math.max(1, Number(a.page ?? 1));
         const pageSize = Math.min(50, Math.max(1, Number(a.pageSize ?? (op === 'pq.list' ? 100 : 20))));
-        const rows = await sql(
-          `select id, total from public.search_public_questions($1, $2, $3, $4, $5)`,
-          [String(a.q ?? ''), blank(a.topic), blank(a.category), pageSize, (page - 1) * pageSize],
-        );
+        const latest = op === 'pq.search' && a.sort === 'latest';
+        const rows = latest
+          ? await sql(
+            `with nq as (select public.he_normalize(coalesce($1, '')) as v)
+             select p.id, count(*) over () as total
+             from public.public_questions p, nq
+             where p.status = 'published' and p.deleted_at is null and p.hidden = false
+               and ($2::text is null or exists (select 1 from public.topics t where t.id = p.topic_id and t.slug = $2))
+               and ($3::text is null or exists (select 1 from public.halacha_categories c where c.id = p.category_id and c.slug = $3))
+               and (nq.v = '' or not exists (
+                 select 1 from unnest(string_to_array(nq.v, ' ')) tok
+                 where tok <> ''
+                   and coalesce(p.search_text, '') not like '%' || tok || '%'
+                   and (length(public.he_skeleton(tok)) < 2
+                        or public.he_skeleton(coalesce(p.search_text, '')) not like '%' || public.he_skeleton(tok) || '%')
+               ))
+             order by p.published_at desc nulls last
+             limit $4 offset $5`,
+            [String(a.q ?? ''), blank(a.topic), blank(a.category), pageSize, (page - 1) * pageSize],
+          )
+          : await sql(
+            `select id, total from public.search_public_questions($1, $2, $3, $4, $5)`,
+            [String(a.q ?? ''), blank(a.topic), blank(a.category), pageSize, (page - 1) * pageSize],
+          );
         const ids = rows.map((r) => String(r.id));
         if (!ids.length) return op === 'pq.list' ? [] : { items: [], total: 0, page, pageSize };
         const full = await sql(`select * from public.public_questions where id = any($1::uuid[]) and status = 'published' and deleted_at is null and hidden = false`, [ids]);
@@ -257,7 +286,8 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const rows = await sql(
           `select slug, question_text from public.public_questions
            where status = 'published' and deleted_at is null and hidden = false
-             and search_text like '%' || public.he_normalize($1) || '%'
+             and (search_text like '%' || public.he_normalize($1) || '%'
+               or (length(public.he_skeleton($1)) >= 2 and public.he_skeleton(coalesce(search_text, '')) like '%' || public.he_skeleton($1) || '%'))
            order by published_at desc nulls last limit 5`,
           [q],
         );
@@ -310,7 +340,11 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         if (opts.scheduled && (entity === 'content' || entity === 'pages' || entity === 'institutions' || entity === 'events')) {
           where.push(`publish_at is not null and publish_at > now()`);
         }
-        if (opts.q?.trim()) { params.push(like(opts.q)); where.push(`${SEARCH_COL[entity]} ilike '%' || $${params.length} || '%'`); }
+        if (opts.q?.trim()) {
+          params.push(like(opts.q));
+          const n = params.length;
+          where.push(`(${SEARCH_COL[entity]} ilike '%' || $${n} || '%' or (length(public.he_skeleton($${n})) >= 2 and public.he_skeleton(coalesce(${SEARCH_COL[entity]}::text, '')) like '%' || public.he_skeleton($${n}) || '%'))`);
+        }
         const sort = opts.sort ?? 'updated';
         const order = sort === 'title' ? `${TITLE_COL[entity]} asc` : sort === 'status' ? `status asc, updated_at desc` : `updated_at desc`;
         params.push(pageSize, (page - 1) * pageSize);
@@ -320,7 +354,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         return { items, total: Number(rows[0]?.total ?? 0), page, pageSize };
       }
       case 'admin.get':
-        return getOne(sql, entityOf(a.entity), String(a.id));
+        return getOne(sql, entityOf(a.entity), requireId(a.id));
       case 'admin.create': {
         const entity = entityOf(a.entity);
         const d = { ...(a.data as Record<string, unknown>) };
@@ -482,7 +516,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         await mustWrite(sql, `update public.modules set enabled = $1, settings = $2::jsonb, updated_at = now() where id = $3 returning id`, [a.enabled, JSON.stringify(a.settings ?? {}), a.id], 'עדכון המודול');
         return null;
       case 'admin.questions': {
-        const opts = a.opts as { status?: string; page?: number; q?: string; sort?: string };
+        const opts = a.opts as { status?: string; page?: number; q?: string; sort?: string; assignee?: string; overdue?: boolean };
         const page = Math.max(1, Number(opts.page ?? 1));
         const order = opts.sort === 'status' ? 'status asc, created_at desc'
           : opts.sort === 'code' ? 'tracking_code asc'
@@ -491,9 +525,12 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
           : 'created_at desc';
         const rows = await sql(
           `select *, count(*) over () as total from public.question_submissions
-           where ($1 = '' or status::text = $1) and ($2 = '' or question_text ilike '%' || $2 || '%' or tracking_code ilike '%' || $2 || '%')
+           where ($1 = '' or status::text = $1)
+             and ($2 = '' or question_text ilike '%' || $2 || '%' or tracking_code ilike '%' || $2 || '%')
+             and ($4 = '' or assigned_to::text = $4)
+             and ($5::boolean = false or (due_at is not null and due_at < now() and status::text not in ('published','private_delivered','closed')))
            order by ${order} limit 25 offset $3`,
-          [opts.status ?? '', like(opts.q ?? ''), (page - 1) * 25],
+          [opts.status ?? '', like(opts.q ?? ''), (page - 1) * 25, String(opts.assignee ?? ''), opts.overdue === true],
         );
         return { items: rows.map(questionRow), total: Number(rows[0]?.total ?? 0), page, pageSize: 25 };
       }
@@ -578,14 +615,14 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
           await mustWrite(sql, `update public.question_submissions set public_question_id = $1, version = $2 where id = $3 returning id`, [pq.id, a.expectedVersion, a.id], 'עדכון השאלה');
           return { published: false, needsReapproval: true, id: String(pq.id) };
         }
-        await mustWrite(sql, `update public.public_questions set status = 'approved', version = $2 where id = $1 returning id`, [pq.id, pq.version], 'אישור השו״ת');
-        await mustWrite(sql, `update public.public_questions set status = 'published', published_at = coalesce(published_at, now()), version = $2 where id = $1 returning id`, [pq.id, Number(pq.version) + 1], 'פרסום השו״ת');
-        const reason = '';
-        await sql(`select set_config('app.audit_reason', $1, true)`, [reason]);
+        // Lock the source before the public row is published. The publish trigger
+        // also locks an approved source, and would bump the version a second time.
         let notifyToken = '';
         let notifyHash: string | null = null;
         if (sub.contactEmail) { notifyToken = newToken(); notifyHash = await sha256Hex(notifyToken); }
         await mustWrite(sql, `update public.question_submissions set status = 'published', public_question_id = $1, version = $2, notify_token_hash = coalesce($4, notify_token_hash) where id = $3 returning id`, [pq.id, a.expectedVersion, a.id, notifyHash], 'עדכון השאלה');
+        await mustWrite(sql, `update public.public_questions set status = 'approved', version = $2 where id = $1 returning id`, [pq.id, pq.version], 'אישור השו״ת');
+        await mustWrite(sql, `update public.public_questions set status = 'published', published_at = coalesce(published_at, now()), version = $2 where id = $1 returning id`, [pq.id, Number(pq.version) + 1], 'פרסום השו״ת');
         if (notifyToken && sub.contactEmail) quiet(notifyAnswerReady(sub.contactEmail, sub.trackingCode, notifyToken));
         return { published: true, needsReapproval: false, id: String(pq.id) };
       }

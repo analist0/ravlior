@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalizeUrl, detectProvider, embedUrl, formatDuration, parseDuration, youtubeId } from '../src/shared/media.ts';
+import { parseLengthSeconds, parseOEmbedPayload, youtubeMetaFromParts } from '../src/shared/youtube-meta.ts';
+import { whyRelated } from '../src/shared/hall.ts';
 
 test('youtubeId handles watch/shorts/youtu.be/embed and rejects junk', () => {
   assert.equal(youtubeId('https://www.youtube.com/watch?v=M6BfU-i-_xk'), 'M6BfU-i-_xk');
@@ -22,6 +24,26 @@ test('iframe allowlist: only YouTube (nocookie) embeds', () => {
   assert.equal(embedUrl('ykr', '3105'), null);
   assert.equal(embedUrl('web', 'x'), null);
   assert.equal(embedUrl('youtube', 'bad id"><'), null);
+});
+
+test('youtube metadata parser keeps only a real title, author and length', () => {
+  assert.equal(parseOEmbedPayload('M6BfU-i-_xk', { title: '  שיעור לדוגמה  ', author_name: 'מוסדות אור המאיר' })?.title, 'שיעור לדוגמה');
+  assert.equal(parseOEmbedPayload('short', { title: 'x' }), null);
+  assert.equal(parseOEmbedPayload('M6BfU-i-_xk', { title: '<b>x</b>' }), null);
+  assert.equal(parseLengthSeconds('{"lengthSeconds":"1466"}'), 1466);
+  assert.equal(parseLengthSeconds('{"lengthSeconds":"0"}'), null);
+  assert.equal(parseLengthSeconds('no duration here'), null);
+  const meta = youtubeMetaFromParts('M6BfU-i-_xk', { title: 'כותרת מהמקור', author_name: 'ערוץ' }, '{"lengthSeconds":"90"}');
+  assert.equal(meta?.thumbnailUrl, 'https://i.ytimg.com/vi/M6BfU-i-_xk/hqdefault.jpg');
+  assert.equal(meta?.durationText, '1:30');
+  assert.equal(meta?.author, 'ערוץ');
+});
+
+test('recommendations are labelled only from a real series, topic or duplicate', () => {
+  const seed = { seriesIds: ['s1'], topicIds: ['t1'], duplicateGroup: null };
+  assert.equal(whyRelated(seed, { seriesIds: ['s1'], topicIds: [], duplicateGroup: null }), 'אותה סדרה');
+  assert.equal(whyRelated(seed, { seriesIds: [], topicIds: ['t1'], duplicateGroup: null }), 'נושא משותף');
+  assert.equal(whyRelated(seed, { seriesIds: [], topicIds: [], duplicateGroup: null }), '');
 });
 
 test('provider detection and durations', () => {

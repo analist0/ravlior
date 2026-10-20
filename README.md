@@ -72,6 +72,8 @@ Production already runs on Neon (`ravlior`, Postgres 18). This repository does *
 11. `neon/migrations/020_cms_books_events_contact.sql`
 12. `neon/migrations/021_media_hall.sql` (auditorium: chapters + transcript; must follow 020)
 13. `neon/migrations/022_search_skeleton.sql` (ktiv male/haser search; must follow 021)
+14. `neon/migrations/023_seo_redirects.sql` (SEO redirects table)
+15. `neon/migrations/024_search_variants.sql` (keyboard-layout + doubled-letter search; supersedes search_content; must follow 022)
 
 Then, optionally, `neon/verify/row_counts.sql` and `neon/verify/rls_checks.sql`. The checks run in a transaction and roll back. Every line should print `PASS`.
 

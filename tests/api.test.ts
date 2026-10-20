@@ -17,6 +17,11 @@ function mockDeps(over: Partial<Deps> = {}) {
     env: { databaseUrl: 'postgres://local/test', authSecret: 'test-secret-16chars', rateSalt: 'salt', importAllowlist: ['kol-barama.co.il'], siteUrl: '', turnstileSecret: '', indexNowKey: '', configured: true },
     now: Date.now,
     probe: async (u) => { if (u.includes('127.0.0.1')) throw new SsrfError('blocked'); return { finalUrl: u, status: 200, contentType: 'audio/mpeg', contentLength: 1234, redirects: 0, bytesRead: 0 }; },
+    fetchText: async (u) => {
+      if (u.includes('oembed')) return JSON.stringify({ title: 'כותרת מהמקור', author_name: 'ערוץ הבדיקה' });
+      if (u.includes('/embed/')) return '{"lengthSeconds":"125"}';
+      throw new SsrfError('blocked');
+    },
     client: {
       insertQuestion: async (r: Record<string, unknown>) => { rows.push(r); return null; },
       rateLimit: async (bucket: string, _window: number, max: number) => {
@@ -159,6 +164,20 @@ test('malformed admin.get and admin.update return 400', async () => {
   await assert.rejects(() => dispatch('admin.get', { entity: 'content', id: null }, 'user', 'secret'), (e: unknown) => e instanceof ApiError && e.status === 400);
   await assert.rejects(() => dispatch('admin.update', { entity: 'content', id: '00000000-0000-4000-a000-000000000099', expectedVersion: 1 }, 'user', 'secret'), (e: unknown) => e instanceof ApiError && e.status === 400);
   await assert.rejects(() => dispatch('admin.get', { entity: 'content', id: null }, null, 'secret'), (e: unknown) => e instanceof ApiError && e.status === 401);
+});
+
+test('youtube meta: staff only, title from oEmbed, duration when the embed page has it', async () => {
+  const { deps } = mockDeps();
+  assert.equal((await handle(post('/api/import/youtube', { url: 'https://www.youtube.com/watch?v=M6BfU-i-_xk' }), '8.8.8.8', deps)).status, 401);
+  assert.equal((await handle(post('/api/import/youtube', { url: 'https://www.youtube.com/watch?v=M6BfU-i-_xk' }, { authorization: 'Bearer jwt-viewer' }), '8.8.8.8', deps)).status, 403);
+  assert.equal((await handle(post('/api/import/youtube', { url: 'https://evil.example/watch?v=M6BfU-i-_xk' }, { authorization: 'Bearer jwt-editor' }), '8.8.8.8', deps)).status, 400);
+  const ok = await handle(post('/api/import/youtube', { url: 'https://youtu.be/M6BfU-i-_xk' }, { authorization: 'Bearer jwt-editor' }), '8.8.8.8', deps);
+  assert.equal(ok.status, 200);
+  const body = (await ok.json()) as { title: string; author: string; durationSeconds: number; thumbnailUrl: string };
+  assert.equal(body.title, 'כותרת מהמקור');
+  assert.equal(body.author, 'ערוץ הבדיקה');
+  assert.equal(body.durationSeconds, 125);
+  assert.equal(body.thumbnailUrl, 'https://i.ytimg.com/vi/M6BfU-i-_xk/hqdefault.jpg');
 });
 
 test('admin users endpoint requires admin/owner', async () => {

@@ -9,11 +9,14 @@ import { BlockRenderer } from '../components/Blocks.tsx';
 import { ReadingProgress, ReadingTools } from '../components/Reading.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { CardGrid, hostedPdf, MediaPlayer, pickSource, playableTrack, providerLabel, thumbFor } from '../components/Media.tsx';
+import { FilmCard } from '../components/FilmCard.tsx';
+import { SnapRail } from '../components/SnapRail.tsx';
 import { usePlayer } from '../player/PlayerProvider.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, TYPE_LABEL, formatHebDate, splitTitle } from '../components/ui.tsx';
 import { NotFound } from './NotFound.tsx';
-import { parseTimestamp, lessonJsonLd } from '../shared/lesson.ts';
+import { lessonJsonLd, parseTimestamp } from '../shared/lesson.ts';
+import { whyRelated } from '../shared/hall.ts';
 import type { AttributionStatus, ContentItem, MediaSource, Series } from '../shared/types.ts';
 import { contentJsonLd } from '../shared/seo.ts';
 
@@ -40,9 +43,15 @@ function SourceList({ sources }: { sources: MediaSource[] }) {
             <Badge>{KIND[s.kind]}</Badge><Badge tone="accent">{providerLabel(s.provider)}</Badge>
             {s.storagePath ? <Badge tone="ok">מתארח באתר</Badge> : <Badge>טרם הועלה</Badge>}
           </div>
-          <span className="ltr soft" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
+          {s.provider === 'youtube' ? (
+            <span className="soft ltr" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
+              מוטמע בנגן האתר{s.providerId ? ` · ${s.providerId}` : ''}
+            </span>
+          ) : (
+            <span className="ltr soft" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
             מקור: {(() => { try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch { return providerLabel(s.provider); } })()}
-          </span>
+            </span>
+          )}
           <span className="soft">{RIGHTS[s.rightsStatus]}{s.lastCheckedAt ? ` · נבדק ${formatHebDate(s.lastCheckedAt)}` : ' · זמינות לא נבדקה'}</span>
         </li>
       ))}
@@ -66,7 +75,7 @@ function Share({ item }: { item: ContentItem }) {
 
 export default function ItemPage({ params }: { params: Record<string, string> }) {
   const repo = useRepo();
-  const { isFavorite, toggleFavorite } = useLibraryState();
+  const { isFavorite, toggleFavorite, isWatchLater, toggleWatchLater } = useLibraryState();
   const player = usePlayer();
   const toast = useToast();
   const articleRef = useRef<HTMLElement>(null);
@@ -117,6 +126,8 @@ export default function ItemPage({ params }: { params: Record<string, string> })
   const others = (related.data ?? []).filter((c) => !dupes.includes(c));
   const fav = isFavorite(item.id);
   const isText = TEXT_TYPES.has(item.type);
+  const later = isWatchLater(item.id);
+  const watchable = item.type === 'video' || item.type === 'short' || item.type === 'live' || item.type === 'audio';
 
   return (
     <article className={isText ? 'text-item' : undefined} ref={isText ? articleRef : undefined} style={isText ? { ['--reading-scale' as string]: readingScale } : undefined}>
@@ -146,6 +157,11 @@ export default function ItemPage({ params }: { params: Record<string, string> })
             <Button variant={fav ? 'primary' : 'secondary'} icon="bookmark" aria-pressed={fav} onClick={() => { const a = toggleFavorite(item.id); toast(a ? 'נשמר במועדפים' : 'הוסר מהמועדפים'); }}>
               {fav ? 'שמור' : 'שמירה'}
             </Button>
+            {watchable && (
+              <Button variant={later ? 'primary' : 'secondary'} icon="clock" aria-pressed={later} onClick={() => toast(toggleWatchLater(item.id) ? 'נשמר לצפייה מאוחר יותר' : 'הוסר מרשימת הצפייה')}>
+                {later ? 'ברשימת הצפייה' : 'צפייה מאוחר יותר'}
+              </Button>
+            )}
             <Share item={item} />
             {track && <Button variant="secondary" icon="queue" onClick={() => { player.enqueue(track); toast('נוסף לתור'); }}>הוספה לתור</Button>}
             {isText && <ReadingTools scale={readingScale} onScale={setReadingScale} />}
@@ -215,8 +231,10 @@ export default function ItemPage({ params }: { params: Record<string, string> })
       </div>
       {others.length > 0 && (
         <section className="section" aria-labelledby="h-related">
-          <h2 id="h-related">חומרים קשורים</h2>
-          <CardGrid items={others.slice(0, 8)} />
+          <div className="section-head"><h2 id="h-related">עוד באותו נושא או באותה סדרה</h2></div>
+          <SnapRail label="עוד באותו נושא או באותה סדרה">
+            {others.map((c) => <li key={c.id}><FilmCard item={c} note={whyRelated(item, c) || undefined} /></li>)}
+          </SnapRail>
         </section>
       )}
       </div>

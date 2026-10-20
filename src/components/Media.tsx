@@ -25,7 +25,8 @@ export const providerLabel = (p: string) => PROVIDER_LABEL[p] ?? p;
 /** Delivery priority: official embed → authorised direct URL → our Storage file → source link. */
 export function pickSource(item: ContentItem): { mode: 'embed' | 'native' | 'link' | 'none'; source: MediaSource | null } {
   const media = item.sources.filter((s) => s.kind === 'media' && s.rightsStatus !== 'blocked');
-  const embed = media.find((s) => s.deliveryMode === 'embed' && embedUrl(s.provider, s.providerId) && s.embedStatus !== 'failed');
+  const embed = media.find((s) => s.deliveryMode === 'embed' && embedUrl(s.provider, s.providerId) && s.embedStatus !== 'failed')
+    ?? media.find((s) => s.provider === 'youtube' && !!embedUrl(s.provider, s.providerId));
   if (embed) return { mode: 'embed', source: embed };
   const native = item.sources.find((s) => s.rightsStatus !== 'blocked' && ((s.deliveryMode === 'storage' && hostedUrl(s)) || (s.kind === 'media' && s.deliveryMode === 'direct')) && s.mime && NATIVE_PLAYABLE_MIME.includes(s.mime));
   if (native) return { mode: 'native', source: native };
@@ -45,7 +46,7 @@ export function thumbFor(item: ContentItem): string | null {
 }
 
 export function MediaCard({ item, view = 'grid' }: { item: ContentItem; view?: 'grid' | 'list' }) {
-  const { isFavorite, toggleFavorite, progress } = useLibraryState();
+  const { isFavorite, toggleFavorite, isWatchLater, toggleWatchLater, progress } = useLibraryState();
   const player = usePlayer();
   const toast = useToast();
   const [main, sub] = splitTitle(item.title);
@@ -65,6 +66,14 @@ export function MediaCard({ item, view = 'grid' }: { item: ContentItem; view?: '
         onClick={() => { const added = toggleFavorite(item.id); toast(added ? 'נשמר במועדפים' : 'הוסר מהמועדפים'); }}
       />
       {track && <IconButton icon="queue" label={`הוספה לתור: ${main}`} onClick={() => { player.enqueue(track); toast('נוסף לתור ההאזנה'); }} />}
+      {(item.type === 'video' || item.type === 'short' || item.type === 'live' || item.type === 'audio') && (
+        <IconButton
+          icon="clock"
+          label={isWatchLater(item.id) ? `הסרה מצפייה מאוחר יותר: ${main}` : `צפייה מאוחר יותר: ${main}`}
+          pressed={isWatchLater(item.id)}
+          onClick={() => toast(toggleWatchLater(item.id) ? 'נשמר לצפייה מאוחר יותר' : 'הוסר מרשימת הצפייה')}
+        />
+      )}
     </>
   );
   const media = (
@@ -148,6 +157,15 @@ export function MediaPlayer({ item, startAt = null, resume = true, notes = false
   const pdf = hostedPdf(item);
   if (pdf) return <PdfViewer src={hostedUrl(pdf)!} title={splitTitle(item.title)[0]} />;
   // No outbound links: until a file is hosted here, say so plainly.
+  if (source.provider === 'youtube') {
+    return (
+      <div className="state" style={{ padding: 'var(--s-6)' }}>
+        <Icon name="watch" />
+        <h3 style={{ margin: 0 }}>הנגן לא זמין כרגע</h3>
+        <p style={{ margin: 0 }}>סרטוני YouTube נשארים בנגן של האתר. אין קישור החוצה.</p>
+      </div>
+    );
+  }
   return (
     <div className="state" style={{ padding: 'var(--s-6)' }}>
       <Icon name="info" />

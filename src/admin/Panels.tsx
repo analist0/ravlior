@@ -7,8 +7,10 @@ import { useToast } from '../components/Toast.tsx';
 import { useConfirm } from '../components/Dialog.tsx';
 import { BLOCK_LABEL, BLOCK_TYPES, emptyBlock, sanitizeBlocks } from '../shared/blocks.ts';
 import { chaptersToText, cleanTranscript, parseChapterLines } from '../shared/lesson.ts';
-import { canonicalizeUrl, detectProvider, youtubeId } from '../shared/media.ts';
+import { canonicalizeUrl, detectProvider, formatDuration, youtubeId } from '../shared/media.ts';
 import { blocksToWriting, bookOffers, revisionDiff, writingToBlocks } from '../shared/sections.ts';
+import { heMatches } from '../shared/hebrew.ts';
+import { thumbFor } from '../components/Media.tsx';
 import type { Block, BookDetails, ContentItem, MediaChapter, MediaSource } from '../shared/types.ts';
 
 function MediaPicker({ onPick }: { onPick: (src: string) => void }) {
@@ -52,7 +54,7 @@ function ReorderButtons({ i, n, onMove, label }: { i: number; n: number; onMove:
   );
 }
 
-function ContentPicker({ onPick, exclude = [] }: { onPick: (c: ContentItem) => void; exclude?: string[] }) {
+function ContentPicker({ onPick, exclude = [], types }: { onPick: (c: ContentItem) => void; exclude?: string[]; types?: ContentItem['type'][] }) {
   const repo = useRepo();
   const [q, setQ] = useState('');
   const r = useAsync(() => (q.trim().length > 1 ? repo.admin.list('content', { q, pageSize: 8 }) : Promise.resolve(null)), [q]);
@@ -62,7 +64,7 @@ function ContentPicker({ onPick, exclude = [] }: { onPick: (c: ContentItem) => v
       <input className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="הקלידו לפחות שתי אותיות" />
       {r.data && (
         <ul className="reorder-list" style={{ marginTop: 6 }}>
-          {(r.data.items as ContentItem[]).filter((c) => !exclude.includes(c.id)).map((c) => (
+          {(r.data.items as ContentItem[]).filter((c) => !exclude.includes(c.id) && (!types || types.includes(c.type))).map((c) => (
             <li key={c.id}>
               <Badge>{TYPE_LABEL[c.type]}</Badge><span className="grow">{splitTitle(c.title)[0]}</span>
               <Button size="sm" variant="secondary" icon="plus" onClick={() => { onPick(c); setQ(''); }}>הוספה</Button>
@@ -285,6 +287,8 @@ export function SeriesItemsEditor({ seriesId, initial }: { seriesId: string; ini
   const toast = useToast();
   const [ids, setIds] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [onlyLessons, setOnlyLessons] = useState(true);
   const items = useAsync(async () => {
     const out: ContentItem[] = [];
     for (const id of ids) {
@@ -299,20 +303,40 @@ export function SeriesItemsEditor({ seriesId, initial }: { seriesId: string; ini
     setBusy(true);
     try { await repo.admin.setSeriesItems(seriesId, ids); toast('סדר הפרקים נשמר'); } catch (e) { toast(errorMessage(e), { tone: 'error' }); } finally { setBusy(false); }
   };
+  const rows = ids.map((id, i) => ({ id, i })).filter(({ id }) => !filter.trim() || heMatches(titleOf(id), filter));
   return (
     <section className="panel" aria-labelledby="h-si">
       <h2 id="h-si">פרקים בסדרה ({ids.length})</h2>
+      <p className="soft">הסדר כאן הוא הסדר באולם. חיפוש מסנן את הרשימה בלי לשנות את הסדר.</p>
+      <TextField label="סינון פרקים" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="כותרת" />
       <ol className="reorder-list">
-        {ids.map((id, i) => (
-          <li key={id} {...drag.bind(i)}>
-            <span className="kbd">{i + 1}</span>
-            <span className="grow">{titleOf(id)}</span>
-            <ReorderButtons i={i} n={ids.length} label={titleOf(id)} onMove={(to) => setIds(move(ids, i, to))} />
-            <IconButton icon="close" label={`הסרה מהסדרה: ${titleOf(id)}`} onClick={() => setIds(ids.filter((x) => x !== id))} />
-          </li>
-        ))}
+        {rows.map(({ id, i }) => {
+          const item = items.data?.find((c) => c.id === id);
+          const thumb = item ? thumbFor(item) : null;
+          const title = titleOf(id);
+          const duration = item?.durationText ?? (item?.durationSeconds ? formatDuration(item.durationSeconds) : '');
+          return (
+            <li key={id}>
+              <span className="kbd">{i + 1}</span>
+              {thumb && <img src={thumb} alt="" width={72} height={40} style={{ width: 72, height: 40, objectFit: 'cover', borderRadius: 6 }} />}
+              <span className="grow">{title}{duration ? <span className="soft ltr"> · {duration}</span> : null}</span>
+              <IconButton icon="chevronUp" label={`לראש הסדרה: ${title}`} disabled={i === 0} onClick={() => setIds(move(ids, i, 0))} />
+              <ReorderButtons i={i} n={ids.length} label={title} onMove={(to) => setIds(move(ids, i, to))} />
+              <IconButton icon="chevronDown" label={`לסוף הסדרה: ${title}`} disabled={i === ids.length - 1} onClick={() => setIds(move(ids, i, ids.length - 1))} />
+              <IconButton icon="close" label={`הסרה מהסדרה: ${title}`} onClick={() => setIds(ids.filter((x) => x !== id))} />
+            </li>
+          );
+        })}
       </ol>
-      <div style={{ marginTop: 'var(--s-3)' }}><ContentPicker exclude={ids} onPick={(c) => setIds([...ids, c.id])} /></div>
+      {rows.length === 0 && ids.length > 0 && <p className="soft">אין פרק שמתאים לסינון.</p>}
+      <Checkbox label="הוספה של שיעורי וידאו ושמע בלבד" checked={onlyLessons} onChange={(e) => setOnlyLessons(e.target.checked)} />
+      <div style={{ marginTop: 'var(--s-3)' }}>
+        <ContentPicker
+          exclude={ids}
+          types={onlyLessons ? ['video', 'short', 'live', 'audio'] : undefined}
+          onPick={(c) => setIds([...ids, c.id])}
+        />
+      </div>
       <Button busy={busy} onClick={() => void save()} style={{ marginTop: 'var(--s-3)' }}>שמירת סדר הפרקים</Button>
     </section>
   );

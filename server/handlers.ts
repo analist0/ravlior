@@ -10,18 +10,22 @@ import { dbClient } from './lib/db-client.ts';
 import { UpstreamError, type DataClient } from './lib/data-client.ts';
 import { RateLimiter } from './lib/rate-limit.ts';
 import { readObject, uploadChunk } from './media-http.ts';
-import { guardedProbe, SsrfError, type ProbeResult } from './lib/ssrf.ts';
+import { guardedFetchText, guardedProbe, type ProbeResult, SsrfError } from './lib/ssrf.ts';
 import { notifyStaff } from './mailer.ts';
 import { indexNowTargets } from '../src/shared/seo.ts';
 import type { SeoCatalog } from '../src/shared/seo.ts';
 import { pingIndexNow } from './indexnow.ts';
 import { loadDefaultSeoCatalog, readShell, seoResponse } from './seo-http.ts';
+import { youtubeId } from '../src/shared/media.ts';
+import { youtubeMetaFromParts } from '../src/shared/youtube-meta.ts';
 import { dispatch } from './store.ts';
 
 export interface Deps {
   env: ServerEnv;
   client: DataClient | null;
   probe: (url: string, allow: string[]) => Promise<ProbeResult>;
+  /** SSRF-guarded GET used for YouTube oEmbed / embed metadata. Staff only. */
+  fetchText: (url: string, allow: string[]) => Promise<string>;
   now: () => number;
   /** Override the published catalog (tests). Production reads the database. */
   seoCatalog?: () => Promise<SeoCatalog>;
@@ -47,7 +51,12 @@ async function verifyTurnstile(token: string, secret: string, ip: string): Promi
 
 export function defaultDeps(): Deps {
   const env = readEnv();
-  return { env, client: env.configured ? dbClient(env) : null, probe: (u, allow) => guardedProbe(u, { allowHosts: allow }), now: Date.now };
+  return {
+  env, client: env.configured ? dbClient(env) : null,
+  probe: (u, allow) => guardedProbe(u, { allowHosts: allow }),
+  fetchText: (u, allow) => guardedFetchText(u, { allowHosts: allow, maxBytes: u.includes('/embed/') ? 700_000 : 64_000 }),
+  now: Date.now,
+};
 }
 
 const SECURITY_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
@@ -188,6 +197,33 @@ async function probe(req: Request, d: Deps): Promise<Response> {
   }
 }
 
+async function youtubeMeta(req: Request, d: Deps): Promise<Response> {
+  await requireStaff(req, d, ['owner', 'admin', 'editor']);
+  const b = (await readJson(req)) as { url?: unknown };
+  if (typeof b.url !== 'string') return err(400, 'חסר קישור');
+  const id = youtubeId(b.url);
+  if (!id) return err(400, 'זה לא קישור YouTube תקין');
+  const page = `https://www.youtube.com/watch?v=${id}`;
+  const oembed = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(page)}`;
+  try {
+    const body = await d.fetchText(oembed, ['youtube.com', 'www.youtube.com']);
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch { return err(502, 'YouTube החזיר תשובה לא קריאה'); }
+    let html: string | null = null;
+    try {
+      html = await d.fetchText(`https://www.youtube-nocookie.com/embed/${id}`, ['youtube-nocookie.com', 'www.youtube-nocookie.com']);
+    } catch {
+      html = null;
+    }
+    const meta = youtubeMetaFromParts(id, parsed, html);
+    if (!meta) return err(502, 'YouTube לא החזיר כותרת לקישור הזה');
+    return json(meta);
+  } catch (e) {
+    if (e instanceof SsrfError) return err(400, e.message);
+    return err(502, 'לא ניתן היה למשוך פרטים מ-YouTube');
+  }
+}
+
 async function adminUsers(req: Request, d: Deps): Promise<Response> {
   const actor = await requireStaff(req, d, ['owner', 'admin']);
   if (req.method === 'POST') {
@@ -302,6 +338,7 @@ export async function handle(req: Request, ip = '0.0.0.0', deps: Deps = defaultD
     if (pathname === '/api/contact' && req.method === 'POST') return await submitContact(req, deps, ip);
     if (pathname === '/api/questions/voice' && req.method === 'POST') return await voiceAnswer(req, deps, ip);
     if (pathname === '/api/import/probe' && req.method === 'POST') return await probe(req, deps);
+    if (pathname === '/api/import/youtube' && req.method === 'POST') return await youtubeMeta(req, deps);
     if (pathname === '/api/admin/users' && (req.method === 'GET' || req.method === 'POST')) return await adminUsers(req, deps);
     if (pathname.startsWith('/api/auth/')) return await authRoutes(req, deps, ip);
     if (pathname === '/api/rpc' && req.method === 'POST') return await rpc(req, deps);

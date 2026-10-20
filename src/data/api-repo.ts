@@ -172,6 +172,7 @@ export async function createApiRepository(): Promise<Repository> {
     probeUrl: (url) => call('/api/import/probe', { method: 'POST', body: JSON.stringify({ url }) }),
     listContacts: (opts) => rpc('admin.contacts', opts),
     setContactStatus: (id, status) => rpc('admin.contactStatus', { id, status }),
+    youtubeMeta: (url) => call('/api/import/youtube', { method: 'POST', body: JSON.stringify({ url }) }),
   };
   repo.admin = admin;
   return repo;

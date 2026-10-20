@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { heMatches, heNormalize, heSkeleton, slugify } from '../src/shared/hebrew.ts';
+import { heKeyboard, heMatches, heNormalize, heSearchFold, heSkeleton, slugify } from '../src/shared/hebrew.ts';
 
 test('niqqud, geresh/gershayim and final letters are normalized', () => {
   assert.equal(heNormalize('עוּלוּ אוּשְׁפִּיזִין'), 'עולו אושפיזינ');
@@ -22,6 +22,17 @@ test('ktiv male and haser share a skeleton', () => {
   assert.ok(heMatches('הלכות תפילה', 'תפלה'));
   assert.ok(heMatches('ברכת המזון ומצוה', 'מצווה'));
   assert.ok(!heMatches('הלכות קריאת מגילה', 'מגילה שופר'));
+});
+
+test('spelling variants: doubled yod or vav, and Hebrew typed on a Latin keyboard', () => {
+  assert.equal(heSearchFold('עניין'), 'ענינ');
+  assert.equal(heSearchFold('ענין'), heSearchFold('עניין'));
+  assert.equal(heSearchFold('וודאי'), 'ודאי');
+  assert.equal(heKeyboard('xufv'), 'סוכה');
+  assert.equal(heSearchFold(heKeyboard('vfk')), 'הכל');
+  assert.ok(heMatches('מעלת האושפיזין ומענייני ברכת לישב בסוכה', 'ענין'));
+  assert.ok(heMatches('מעלת האושפיזין ומענייני ברכת לישב בסוכה', 'xufv'));
+  assert.ok(!heMatches('הלכות קריאת מגילה', 'xufv'));
 });
 
 test('slugify keeps Hebrew and strips punctuation', () => {

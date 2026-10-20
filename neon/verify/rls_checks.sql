@@ -296,6 +296,10 @@ update public.question_submissions set status = 'private_delivered', version = 4
 select pg_temp.ok(pg_temp.raises($$update public.question_submissions set answer_text = 'אחרי מסירה', version = 5 where tracking_code = 'TEST-0003'$$, '42501'),
   'answer text is locked after delivery');
 select pg_temp.back();
+select pg_temp.ok(public.he_search_fold('עניין') = 'ענינ' and public.he_search_fold('ענין') = 'ענינ' and public.he_search_fold('וודאי') = 'ודאי',
+  'he_search_fold collapses doubled yod and vav (matches JS)');
+select pg_temp.ok(public.he_search_fold(public.he_keyboard('xufv')) = 'סוכה' and public.he_search_fold(public.he_keyboard('vfk')) = 'הכל',
+  'he_keyboard maps Israeli QWERTY to Hebrew (matches JS)');
 
 -- ——— seed audit (only meaningful after neon/seed.sql) ———
 select pg_temp.ok((select count(distinct provider_id) from public.media_sources where provider = 'youtube' and kind = 'media') in (0, 182),

@@ -22,6 +22,10 @@ const template = readFileSync(resolve(dist, 'index.html'), 'utf8');
 if (!template.includes('<!--head-meta-->') || !template.includes('<!--prerender-->')) {
   throw new Error('dist/index.html is missing prerender markers. Run vite build first; do not prerender an already prerendered file.');
 }
+const cssHref = template.match(/<link rel="stylesheet"[^>]*href="([^"]+\.css)"/)?.[1];
+const inlinedCss = cssHref
+  ? readFileSync(resolve(dist, cssHref.replace(/^\//, '')), 'utf8').replace(/<\/style/gi, '<\\/style')
+  : '';
 
 function fromSeed(): SeoCatalog {
   const seed: SeedData = JSON.parse(readFileSync(resolve(root, 'src/data/seed.json'), 'utf8'));

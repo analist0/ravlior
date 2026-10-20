@@ -57,7 +57,7 @@ Set `VITE_DATA_MODE=api` only when the server has `DATABASE_URL` and `AUTH_SECRE
 
 ## Loading Postgres (Neon)
 
-Production already runs on Neon (`ravlior`, Postgres 18). This repository does **not** apply SQL. On a fresh database, apply the files below in order. On the live database, apply only `007_qa_workflow.sql` then `008_qa_bank.sql` — do not re-run the seed.
+Production already runs on Neon (`ravlior`, Postgres 18). This repository does **not** apply SQL. On a fresh database, apply the files below in order. On the live database, apply only `007_qa_workflow.sql`, then `008_qa_bank.sql`, then `009_search_skeleton.sql` — do not re-run the seed.
 
 1. `neon/migrations/001_schema.sql`
 2. `neon/migrations/002_workflow.sql`
@@ -68,6 +68,7 @@ Production already runs on Neon (`ravlior`, Postgres 18). This repository does *
 7. `neon/seed.sql` (fresh database only)
 8. `neon/migrations/007_qa_workflow.sql` (additive; safe on a database that already has the seed)
 9. `neon/migrations/008_qa_bank.sql`
+10. `neon/migrations/009_search_skeleton.sql`
 
 Then, optionally, `neon/verify/row_counts.sql` and `neon/verify/rls_checks.sql`. The checks run in a transaction and roll back. Every line should print `PASS`.
 

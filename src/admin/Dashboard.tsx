@@ -3,6 +3,7 @@ import { useAsync, useRepo } from '../data/repo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { Button, ErrorState, Notice, Skeleton } from '../components/ui.tsx';
 import { useConfirm } from '../components/Dialog.tsx';
+import { TopicBars } from '../qa/pieces.tsx';
 import { CONTENT_STATUS_LABEL, isAdmin } from '../shared/workflow.ts';
 import type { ContentStatus } from '../shared/types.ts';
 import { useAdmin } from './AdminApp.tsx';
@@ -11,6 +12,7 @@ export default function Dashboard() {
   const repo = useRepo();
   const { roles } = useAdmin();
   const confirm = useConfirm();
+  const topics = useAsync(() => repo.listTopics(), [repo]);
   const stats = useAsync(async () => {
     const statuses: ContentStatus[] = ['draft', 'in_review', 'approved', 'published', 'archived'];
     const counts = await Promise.all(statuses.map((s) => repo.admin.list('content', { status: s, pageSize: 1 }).then((r) => [s, r.total] as const)));
@@ -47,6 +49,7 @@ export default function Dashboard() {
             {stats.data.qa && <Link to="/admin/questions?sort=oldest" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong>{stats.data.qa.overdue}</strong>שאלות באיחור</Link>}
             {stats.data.qa && <div className="stat"><strong>{stats.data.qa.pendingRabbi}</strong>ממתינות לרב</div>}
             {stats.data.qa && <div className="stat"><strong>{stats.data.qa.avgResponseDays ?? '—'}</strong>ימים ממוצע עד מענה</div>}
+            {stats.data.qa && <div style={{ gridColumn: '1 / -1' }}><h3 style={{ fontSize: 'var(--step-0)' }}>שאלות לפי נושא</h3><TopicBars rows={stats.data.qa.byTopic.map((row) => ({ label: topics.data?.find((t) => t.id === row.topicId)?.name ?? 'ללא נושא', count: row.count }))} /></div>}
             <Link to="/admin/content?status=in_review" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong><Icon name="eye" /></strong>תכנים לבדיקה</Link>
             <Link to="/admin/content/new" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong><Icon name="plus" /></strong>תוכן חדש</Link>
           </div>

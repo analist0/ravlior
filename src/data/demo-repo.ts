@@ -9,7 +9,7 @@ import { previewRows } from '../shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
-import { applyAnswerEdit, applyPublicEdit, buildPublicFromApproved } from '../shared/responsa.ts';
+import { applyAnswerEdit, applyPublicEdit, buildPublicFromApproved, isOverdue } from '../shared/responsa.ts';
 import { slugify } from '../shared/hebrew.ts';
 import { validateArchive } from '../shared/archives.ts';
 import { storagePath, BUCKETS, type BucketId } from '../shared/upload-policy.ts';
@@ -63,6 +63,11 @@ const dbCategories = [
 const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 const clone = <T,>(v: T): T => structuredClone(v);
+function publicBank(p: PublicQuestion): PublicQuestion {
+  const copy = clone(p);
+  delete copy.sourceSubmissionId;
+  return copy;
+}
 const delay = (ms = 60) => new Promise((r) => setTimeout(r, ms));
 
 const DEMO_USERS: StaffUser[] = (['owner', 'admin', 'editor', 'reviewer', 'rabbi', 'viewer'] as Role[]).map((role) => ({
@@ -179,14 +184,18 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       if (opts.topic) rows = rows.filter((p) => db.topics.find((t) => t.id === p.topicId)?.slug === opts.topic);
       if (opts.category) rows = rows.filter((p) => p.categoryId === opts.category || dbCategories.find((c) => c.id === p.categoryId)?.slug === opts.category);
       if (opts.q) rows = rows.filter((p) => heMatches([p.questionText, p.sources ?? '', ...(p.tags ?? [])].join(' '), opts.q!));
-      return clone({ items: rows.slice((page - 1) * 20, page * 20), total: rows.length, page, pageSize: 20 });
+      if (opts.sort === 'latest') rows = [...rows].sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
+      return { items: rows.slice((page - 1) * 20, page * 20).map(publicBank), total: rows.length, page, pageSize: 20 };
     },
     async suggestQuestions(q) {
       if (q.trim().length < 2) return [];
       return db.publicQuestions.filter((p) => p.status === 'published' && !p.deletedAt && !p.hidden && heMatches(p.questionText, q)).slice(0, 5).map((p) => ({ slug: p.slug, questionText: p.questionText }));
     },
     async listCategories() { return clone(dbCategories); },
-    async weekQuestion() { return clone(db.publicQuestions.find((p) => p.weekPick && p.status === 'published' && !p.deletedAt && !p.hidden) ?? null); },
+    async weekQuestion() {
+      const found = db.publicQuestions.find((p) => p.weekPick && p.status === 'published' && !p.deletedAt && !p.hidden);
+      return found ? publicBank(found) : null;
+    },
     async etaDays() { return db.etaDays ?? 14; },
     async followUp(code, token, questionText) {
       const parent = await this.trackQuestion(code, token);
@@ -202,13 +211,13 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     },
     async submitVoice() { return; },
     async listPublicQuestions(q) {
-      return clone(pub(db.publicQuestions).filter((p) => !p.hidden && (!q || heMatches(p.questionText, q))));
+      return pub(db.publicQuestions).filter((p) => !p.hidden && (!q || heMatches(p.questionText, q))).map(publicBank);
     },
     async getPublicQuestion(slug) {
       const p = db.publicQuestions.find((x) => x.slug === slug && isPublic(x) && !x.hidden);
       if (!p) return null;
-      const related = db.publicQuestions.filter((x) => x.id !== p.id && !!p.topicId && x.topicId === p.topicId && isPublic(x) && !x.hidden).slice(0, 4);
-      return clone({ ...p, related });
+      const related = db.publicQuestions.filter((x) => x.id !== p.id && !!p.topicId && x.topicId === p.topicId && isPublic(x) && !x.hidden).slice(0, 4).map(publicBank);
+      return { ...publicBank(p), related };
     },
     async getModules() { return clone(db.modules); },
 
@@ -386,6 +395,19 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       const from = rec.status;
       bump(entity, rec);
       rec.status = to;
+      if (entity === 'publicQuestions' && to === 'published' && from !== 'published') {
+        const srcId = (rec as PublicQuestion).sourceSubmissionId;
+        const linked = srcId
+          ? db.questions.find((x) => x.id === srcId)
+          : db.questions.find((x) => x.publicQuestionId === rec.id);
+        if (linked && linked.status === 'approved') {
+          if (!linked.publishConsent) throw new PermissionError('השואל לא הסכים לפרסום.');
+          linked.status = 'published';
+          linked.publicQuestionId = rec.id;
+          linked.version += 1;
+          linked.updatedAt = now();
+        }
+      }
       if (to === 'published' && 'publishedAt' in rec && !rec.publishedAt) (rec as ContentItem).publishedAt = now();
       log('update', entity, id, { from, to });
       persist();
@@ -562,6 +584,8 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       const page = opts.page ?? 1;
       let rows = db.questions.filter((q) => !opts.status || q.status === opts.status);
       if (opts.q) rows = rows.filter((q) => heMatches([q.questionText, q.trackingCode, q.askerName ?? ''].join(' '), opts.q!));
+      if (opts.assignee) rows = rows.filter((q) => q.assignedTo === opts.assignee);
+      if (opts.overdue) rows = rows.filter((q) => isOverdue(q.dueAt, q.status));
       const sort = opts.sort ?? 'newest';
       rows = [...rows].sort((a, b) => {
         if (sort === 'status') return a.status.localeCompare(b.status) || b.createdAt.localeCompare(a.createdAt);
@@ -625,13 +649,12 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
         answerBlocks: built.blocks, answerAudioUrl: q.answerAudioPath ? `blob:public/${q.answerAudioPath}` : null, topicId: p.topicId, attribution: p.attribution,
         approvedByRabbi: built.approvedByRabbi, publishedAt: built.approvedByRabbi ? now() : null, status: built.approvedByRabbi ? 'published' : 'in_review', version: 1, deletedAt: null,
         sources: q.answerSources ?? null, answerKind: (p.answerKind as PublicQuestion['answerKind']) ?? q.answerKind ?? 'written', categoryId: p.categoryId ?? null,
+        sourceSubmissionId: q.id,
       };
       db.publicQuestions.unshift(pq);
-      if (built.approvedByRabbi) {
-        q.publicQuestionId = pq.id;
-        q.status = 'published';
-        q.version += 1;
-      }
+      q.publicQuestionId = pq.id;
+      q.version += 1;
+      if (built.approvedByRabbi) q.status = 'published';
       log('insert', 'public_questions', pq.id);
       persist();
       return { published: built.approvedByRabbi, needsReapproval: built.needsReapproval, id: pq.id };

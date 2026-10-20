@@ -26,13 +26,16 @@ function RelatedBlock({ ids }: { ids: string[] }) {
   return r.data?.length ? <CardGrid items={r.data} /> : null;
 }
 
-export function BlockRenderer({ blocks }: { blocks: Block[] }) {
+export function BlockRenderer({ blocks, anchorIds = false }: { blocks: Block[]; anchorIds?: boolean }) {
   const { blocks: safe } = sanitizeBlocks(blocks);
   return (
     <div className="prose">
       {safe.map((b, i) => {
         switch (b.type) {
-          case 'heading': return b.level === 2 ? <h2 key={i}>{b.text}</h2> : <h3 key={i}>{b.text}</h3>;
+          case 'heading': {
+            const id = anchorIds ? `qa-${i}` : undefined;
+            return b.level === 2 ? <h2 key={i} id={id}>{b.text}</h2> : <h3 key={i} id={id}>{b.text}</h3>;
+          }
           case 'paragraph': return b.text.split(/\n{2,}/).map((p, j) => <p key={`${i}-${j}`}>{p}</p>);
           case 'image': return (
             <figure key={i} style={{ margin: 'var(--s-6) 0' }}>

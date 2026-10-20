@@ -94,6 +94,36 @@ test('demo: lock, server-side publish, re-approval, and a reasoned send-back', a
   await assert.rejects(repo.admin.updateQuestion(q.id, { answerText: 'אחרי מסירה' }, q.version), /נעולה/);
 });
 
+test('publishing a re-approved public entry locks the source question', async () => {
+  localStorage.clear();
+  const repo = await createDemoRepository(load);
+  await repo.demoSignIn!('editor');
+  const created = await repo.submitQuestion({
+    questionText: 'שאלה לאישור חוזר של הנוסח הציבורי', topicId: null, isAnonymous: true, askerName: null, contactEmail: null,
+    publishConsent: true, website: '', startedAt: Date.now() - 10_000,
+  });
+  let q = (await repo.admin.listQuestions({})).items.find((x) => x.trackingCode === created.trackingCode)!;
+  q = await repo.admin.transitionQuestion(q.id, 'triaged', q.version);
+  q = await repo.admin.transitionQuestion(q.id, 'assigned', q.version);
+  q = await repo.admin.updateQuestion(q.id, { answerText: 'תשובה שנשארת נעולה' }, q.version);
+  q = await repo.admin.transitionQuestion(q.id, 'answered', q.version);
+  await repo.demoSignIn!('rabbi');
+  q = await repo.admin.transitionQuestion(q.id, 'approved', q.version);
+  const held = await repo.admin.publishQuestion(q.id, q.version, {
+    questionText: 'ניסוח ציבורי אחרי עריכה', topicId: null, attribution: 'הרב ליאור כהן',
+  });
+  assert.equal(held.needsReapproval, true);
+  q = (await repo.admin.getQuestion(q.id))!;
+  assert.equal(q.status, 'approved');
+  let pub = (await repo.admin.get('publicQuestions', held.id!)) as PublicQuestion;
+  pub = (await repo.admin.update('publicQuestions', pub.id, { approvedByRabbi: true }, pub.version)) as PublicQuestion;
+  pub = (await repo.admin.transition('publicQuestions', pub.id, 'approved', pub.version)) as PublicQuestion;
+  await repo.admin.transition('publicQuestions', pub.id, 'published', pub.version);
+  q = (await repo.admin.getQuestion(q.id))!;
+  assert.equal(q.status, 'published');
+  await assert.rejects(repo.admin.updateQuestion(q.id, { answerText: 'אחרי פרסום חוזר' }, q.version), /נעולה/);
+});
+
 test('mailer does not send when credentials are unset', async () => {
   const saved = {
     RESEND_API_KEY: process.env.RESEND_API_KEY,

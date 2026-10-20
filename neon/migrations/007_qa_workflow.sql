@@ -93,6 +93,16 @@ declare
   auto_return boolean := false;
 begin
   if not public.app_is_service() then
+    -- Publishing a linked public entry locks the source (trigger depth > 1). A direct
+    -- staff update still goes through question_transition_allowed.
+    if pg_trigger_depth() > 1
+       and old.status = 'approved'
+       and new.status = 'published'
+       and not answer_changed then
+      if not old.publish_consent then
+        raise exception 'asker did not consent to publication' using errcode = '42501';
+      end if;
+    else
     if answer_changed and old.status in ('published', 'private_delivered', 'closed') then
       raise exception 'answer is locked after delivery' using errcode = '42501';
     end if;
@@ -122,6 +132,7 @@ begin
     if old.status = 'approved' and new.status in ('answered', 'assigned') then
       new.approved_by := null;
       new.approved_at := null;
+    end if;
     end if;
   end if;
   if new.version is distinct from old.version then
@@ -203,6 +214,14 @@ begin
   end if;
   if tg_table_name = 'public_questions' and new.status = 'published' and old.status is distinct from 'published' then
     new.published_at := coalesce(new.published_at, now());
+    -- Same lock as a direct publish: the source question is no longer editable.
+    if new.source_submission_id is not null then
+      update public.question_submissions
+         set status = 'published',
+             public_question_id = new.id
+       where id = new.source_submission_id
+         and status = 'approved';
+    end if;
   end if;
   insert into public.revisions (entity, entity_id, version, snapshot, created_by)
   values (tg_table_name, old.id, old.version, to_jsonb(old), public.app_uid());

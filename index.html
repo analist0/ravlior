@@ -11,7 +11,15 @@
     <title>אור המאיר — תורתו של הרב ליאור כהן</title>
     <meta name="description" content="ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול." />
     <!--/head-meta-->
-    <script src="/theme-init.js"></script>
+    <script>
+      /* Apply saved display preferences before first paint (preferences only; no secrets). Inlined so the first paint does not wait on a second request. */
+      try {
+        var p = JSON.parse(localStorage.getItem('prefs.v1') || '{}');
+        if (p.theme === 'dark' || p.theme === 'light') document.documentElement.dataset.theme = p.theme;
+        if (p.motion === 'reduce' || p.motion === 'full') document.documentElement.dataset.motion = p.motion;
+        if (p.fontScale) document.documentElement.style.setProperty('--font-scale', String(p.fontScale));
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"><!--prerender--></div>

@@ -1,4 +1,4 @@
-// Generates supabase/seed/seed.sql from src/data/seed.json + default pages/menus/modules.
+// Generates neon/seed.sql and the retired supabase/seed/seed.sql from src/data/seed.json.
 // Run: node scripts/seed-to-sql.ts   (after node scripts/build-seed.ts)
 // The seed contains PUBLIC SOURCE METADATA ONLY — no private questions, no fake answers.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -34,8 +34,6 @@ const out: string[] = [
   '-- Public source metadata only. Insert-only and idempotent: ON CONFLICT DO NOTHING on every unique key,',
   '-- so a re-run never duplicates rows and never overwrites rows that already exist (including CMS edits).',
   'begin;',
-  // Marks this transaction as the service role so workflow triggers accept published seed rows.
-  `select set_config('request.jwt.claims', '{"role":"service_role"}', true);`,
 ];
 
 out.push(rows('source_archives', ['id', 'name', 'material', 'url', 'verification', 'note'],
@@ -86,6 +84,12 @@ out.push(rows('modules', ['id', 'enabled', 'settings'],
   MODULES.map((m) => [m.id, m.enabledByDefault, Object.fromEntries(m.settings.map((s) => [s.key, s.default]))])));
 
 out.push('commit;\n');
+const body = out.join('\n');
+const banner = (actor: string) =>
+  `${body.replace('begin;\n', `begin;\n${actor}\n`)}`;
 mkdirSync(resolve(root, 'supabase/seed'), { recursive: true });
-writeFileSync(resolve(root, 'supabase/seed/seed.sql'), out.join('\n'));
+mkdirSync(resolve(root, 'neon'), { recursive: true });
+// Kept so the retired Supabase SQL still matches this generator. Neon is the database to apply.
+writeFileSync(resolve(root, 'supabase/seed/seed.sql'), banner(`select set_config('request.jwt.claims', '{"role":"service_role"}', true);`));
+writeFileSync(resolve(root, 'neon/seed.sql'), banner(`select set_config('app.actor', 'service', true);`));
 console.log(`seed.sql: ${seed.content.length} content items, ${seed.content.reduce((n, c) => n + c.sources.length, 0)} sources`);

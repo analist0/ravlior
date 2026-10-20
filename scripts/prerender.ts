@@ -2,8 +2,8 @@
 // description, canonical URL, OpenGraph tags and a crawlable, readable body (links + text).
 // The React app replaces #root on load. Also writes sitemap.xml and robots.txt.
 //
-// Data: if VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY are set at build time, published rows
-// are read from Supabase (anon key, RLS applies); otherwise the research seed is used.
+// Data: if DATABASE_URL is set at build time, published rows are read through the anonymous
+// database role (RLS applies). A failed query fails the build. Otherwise the research seed is used.
 // Limitation (documented in STATUS.md): content published in the CMS after a build is visible to
 // users immediately, but its crawler-visible HTML updates on the next build/deploy.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -22,28 +22,11 @@ const split = (t: string) => { const i = t.indexOf(' / '); return i > 0 ? [t.sli
 const TYPE: Record<string, string> = { video: 'וידאו', audio: 'אודיו', short: 'קצר', live: 'שידור מוקלט', book: 'ספר', leaflet: 'עלון', article: 'דבר תורה', answer: 'תשובה' };
 
 async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; series: Series[]; pages: Omit<Page, 'id'>[]; source: string }> {
-  const url = process.env.VITE_SUPABASE_URL;
-  const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (url && key) {
-    const get = async (path: string) => {
-      const r = await fetch(`${url}/rest/v1/${path}`, { headers: { apikey: key, authorization: `Bearer ${key}` } });
-      if (!r.ok) throw new Error(`prerender fetch ${path}: ${r.status}`);
-      return r.json() as Promise<Record<string, unknown>[]>;
-    };
-    const camel = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()), v]));
-    const [c, t, s, p] = await Promise.all([
-      get('content_items?select=*,media_sources(*)&status=eq.published&deleted_at=is.null&limit=5000'),
-      get('topics?select=*&status=eq.published&deleted_at=is.null'),
-      get('series?select=*,series_items(content_id,position)&status=eq.published&deleted_at=is.null'),
-      get('pages?select=*&status=eq.published&deleted_at=is.null'),
-    ]);
-    return {
-      content: c.map((r) => ({ ...camel(r), sources: ((r.media_sources as Record<string, unknown>[]) ?? []).map(camel) }) as unknown as ContentItem),
-      topics: t.map(camel) as unknown as Topic[],
-      series: s.map((r) => ({ ...camel(r), items: ((r.series_items as { content_id: string; position: number }[]) ?? []).sort((a, b) => a.position - b.position).map((x) => x.content_id) }) as unknown as Series),
-      pages: p.map(camel) as unknown as Page[],
-      source: 'supabase',
-    };
+  if (process.env.DATABASE_URL) {
+    const { withActor } = await import('../server/db.ts');
+    const { loadPrerender } = await import('../server/store.ts');
+    const data = await withActor(null, loadPrerender);
+    return { ...data, source: 'database' };
   }
   const seed: SeedData = JSON.parse(readFileSync(resolve(root, 'src/data/seed.json'), 'utf8'));
   return { content: seed.content.filter((c) => c.status === 'published' && !c.deletedAt), topics: seed.topics, series: seed.series, pages: DEFAULT_PAGES, source: 'seed' };

@@ -16,6 +16,7 @@ export function UsersScreen() {
   const confirm = useConfirm();
   const r = useAsync(() => repo.admin.listUsers(), [repo]);
   const [email, setEmail] = useState('');
+  const [invite, setInvite] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [role, setRole] = useState('');
   if (!isAdmin(roles)) return <Notice tone="warn" icon="lock">ניהול משתמשים למנהלים בלבד.</Notice>;
@@ -38,10 +39,11 @@ export function UsersScreen() {
           </SelectField>
         </div>
       </form>
-      <form className="row" style={{ alignItems: 'end', margin: 'var(--s-4) 0' }} onSubmit={(e) => { e.preventDefault(); void repo.admin.inviteUser(email).then(() => { toast('ההזמנה נשלחה'); setEmail(''); r.reload(); }, (err) => toast(errorMessage(err), { tone: 'error' })); }}>
+      <form className="row" style={{ alignItems: 'end', margin: 'var(--s-4) 0' }} onSubmit={(e) => { e.preventDefault(); void repo.admin.inviteUser(email).then((inv) => { setEmail(''); r.reload(); if (inv.token) setInvite(`${location.origin}/accept?token=${encodeURIComponent(inv.token)}`); else toast('המשתמש נוסף (הדגמה)'); }, (err) => toast(errorMessage(err), { tone: 'error' })); }}>
         <div className="grow"><TextField label="הזמנת משתמש בדוא״ל" type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
         <Button type="submit" icon="plus">הזמנה</Button>
       </form>
+      {invite && <Notice>הקישור מוצג פעם אחת. העבירו אותו לנמען בערוץ מאובטח — אין שליחת דוא״ל מהשרת. <span className="ltr">{invite}</span></Notice>}
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <Skeleton h={200} />}
       {r.data && filterStaff(r.data, { q, role }).length === 0 && <Notice>אין משתמשים התואמים לחיפוש.</Notice>}

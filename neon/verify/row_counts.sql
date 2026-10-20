@@ -1,0 +1,40 @@
+-- Row counts after neon/seed.sql. Fails the session if the dossier seed did not land.
+do $$
+declare n bigint;
+begin
+  select count(*) into n from public.content_items;
+  if n <> 216 then raise exception 'content_items % <> 216', n; end if;
+  select count(*) into n from public.content_items where status = 'published' and deleted_at is null;
+  if n <> 209 then raise exception 'published content % <> 209', n; end if;
+  select count(*) into n from public.content_items where status <> 'published';
+  if n <> 7 then raise exception 'unpublished content % <> 7', n; end if;
+  select count(*) into n from public.media_sources;
+  if n <> 223 then raise exception 'media_sources % <> 223', n; end if;
+  select count(*) into n from public.content_topics;
+  if n <> 288 then raise exception 'content_topics % <> 288', n; end if;
+  select count(*) into n from public.topics;
+  if n <> 15 then raise exception 'topics % <> 15', n; end if;
+  select count(*) into n from public.series;
+  if n <> 5 then raise exception 'series % <> 5', n; end if;
+  select count(*) into n from public.series_items;
+  if n <> 69 then raise exception 'series_items % <> 69', n; end if;
+  select count(*) into n from public.book_details;
+  if n <> 10 then raise exception 'book_details % <> 10', n; end if;
+  select count(*) into n from public.institutions;
+  if n <> 4 then raise exception 'institutions % <> 4', n; end if;
+  select count(*) into n from public.events;
+  if n <> 19 then raise exception 'events % <> 19', n; end if;
+  select count(*) into n from public.source_archives;
+  if n <> 11 then raise exception 'source_archives % <> 11', n; end if;
+  select count(*) into n from public.pages;
+  if n <> 5 then raise exception 'pages % <> 5', n; end if;
+  select count(*) into n from public.menus;
+  if n <> 2 then raise exception 'menus % <> 2', n; end if;
+  select count(*) into n from public.homepage_sections;
+  if n <> 8 then raise exception 'homepage_sections % <> 8', n; end if;
+  select count(*) into n from public.modules;
+  if n <> 9 then raise exception 'modules % <> 9', n; end if;
+  select count(distinct provider_id) into n from public.media_sources where provider = 'youtube' and kind = 'media';
+  if n <> 182 then raise exception 'youtube ids % <> 182', n; end if;
+  raise notice 'PASS: seed row counts match the dossier';
+end $$;

@@ -26,7 +26,7 @@ Each module is declared by a typed manifest in `src/modules/manifest.ts` (Node-s
 
 1. Add a manifest to `MODULES` (unique id, semver version, `featureFlag: 'module.<id>'`).
 2. Put the screens in `src/modules/<id>/…` and register the route in `ROUTES` in `src/app/App.tsx` with `lazy(...)`.
-3. If a table is needed: a new migration under `supabase/migrations/`, listed in `migrations`, with RLS policies.
+3. If a table is needed: a new migration under `neon/migrations/`, listed in `migrations`, with RLS policies.
 4. Add a row to `public.modules` (the seed does this automatically via `seed-to-sql`).
 5. Run `npm test`: `tests/modules.test.ts` is the **contract**. It checks the id, version, feature flag, routes, roles, that the migrations exist, that dependencies exist, that there are no cycles, and the settings types.
 

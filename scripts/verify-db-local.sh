@@ -1,15 +1,19 @@
 #!/bin/sh
-# Applies shim + migrations + seed + RLS checks to a THROWAWAY local Postgres (not Supabase).
-# Usage: PGHOST=/var/tmp/orpg PGPORT=54329 PGUSER=postgres sh scripts/verify-db-local.sh
+# Applies Neon migrations + seed + row-count and RLS checks to a THROWAWAY local Postgres.
+# Usage: PGPORT=5432 sh scripts/verify-db-local.sh
+# The SQL in neon/ is what to apply to the Neon project (in this order). Do not point this at Neon.
 set -eu
 DB=${VERIFY_DB:-or_verify}
+PSQL=${PSQL:-psql}
 export PGOPTIONS="-c client_min_messages=warning"
-psql -v ON_ERROR_STOP=1 -q -d postgres -c "drop database if exists $DB" -c "create database $DB"
-psql -v ON_ERROR_STOP=1 -q -d "$DB" -f supabase/verify/local-shim.sql
-for f in supabase/migrations/*.sql; do
+$PSQL -v ON_ERROR_STOP=1 -q -d postgres -c "drop database if exists \"$DB\"" -c "create database \"$DB\""
+for f in neon/migrations/*.sql; do
   echo "apply $f"
-  psql -v ON_ERROR_STOP=1 -q -d "$DB" -f "$f"
+  $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$f"
 done
-if [ -f supabase/seed/seed.sql ]; then echo "apply seed"; psql -v ON_ERROR_STOP=1 -q -d "$DB" -f supabase/seed/seed.sql; fi
-echo "run rls checks"
-PGOPTIONS="-c client_min_messages=notice" psql -v ON_ERROR_STOP=1 -q -At -d "$DB" -f supabase/verify/rls_checks.sql 2>&1 | grep -E "PASS|FAIL|ERROR"
+echo "apply neon/seed.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f neon/seed.sql
+echo "row counts"
+PGOPTIONS="-c client_min_messages=notice" $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f neon/verify/row_counts.sql
+echo "rls checks"
+PGOPTIONS="-c client_min_messages=notice" $PSQL -v ON_ERROR_STOP=1 -q -At -d "$DB" -f neon/verify/rls_checks.sql 2>&1 | grep -E "PASS|FAIL|ERROR"

@@ -1,33 +1,37 @@
 # Or HaMeir — the Torah of Rabbi Lior Cohen
 
-A Hebrew RTL site for watching, listening, browsing and asking. It includes a public library, a persistent audio player, a Q&A system with private tracking, a full CMS (CRUD, workflow, versions, audit), a module system and Supabase (Postgres/Auth/Storage with RLS).
+A Hebrew RTL site for watching, listening, browsing and asking. It includes a public library, a persistent audio player, a Q&A system with private tracking, a full CMS (CRUD, workflow, versions, audit), a module system, and Postgres (Neon) with row-level security enforced through the server API.
 
-> **Current status:** the code is complete and works in **demo mode** (no database, clearly labelled). It is not yet connected to a Supabase project and has not been deployed. Details are in [`STATUS.md`](STATUS.md).
+> **Current status:** the code works in **demo mode** (no database, clearly labelled) and, when configured, against Postgres. SQL was verified on a local Postgres 18. It has **not** been applied to the Neon project and has not been deployed. Details are in [`STATUS.md`](STATUS.md).
 
 ## Stack (decision)
 
 **React 19 + TypeScript 6 + Vite 7** (Rollup + esbuild, which ship documented android-arm64 builds), without Vite 8/Rolldown or SWC. Public pages are **pre-rendered** after the build (`scripts/prerender.ts`) with real titles/descriptions/OG for SEO. The API is a small **Node server** with web-standard handlers (`server/handlers.ts`) that runs the same way locally and in Vercel Functions. Why not Astro: to avoid a second build layer; one layer, verified here, with pre-rendering, is enough. Full reasoning is in `COMPATIBILITY.md`.
+
+The browser talks only to `/api`. Postgres credentials stay on the server (`DATABASE_URL`). Neon hosts use `@neondatabase/serverless`; localhost uses `pg`.
 
 ## Structure
 
 ```
 src/
   shared/      logic shared by browser, server and tests (types, Hebrew search, workflow, blocks, uploads, questions)
-  data/        Repository: demo-repo (in-browser, labelled) | supabase-repo (real, RLS) | seed.json (generated)
+  data/        Repository: demo-repo (in-browser, labelled) | api-repo (cookie session, /api) | seed.json (generated)
   app/ components/ pages/ player/   public site
   admin/       CMS (/admin)
   modules/     module manifest + example module (parasha-shelf)
   styles/      design tokens + CSS
-server/        Node API: question submission, voice-answer signed URLs, URL probe (SSRF-guarded), user management
+server/        Node API: Postgres, sessions, media, question submission, URL probe, user invites
 api/           Vercel Function entry point (uses server/handlers.ts)
-supabase/migrations/   SQL: schema, workflow/audit, RLS, storage+search, public-answer guard
-supabase/seed/seed.sql generated seed (public metadata only)
-supabase/verify/       rls_checks.sql (runs in a transaction and rolls back) + local-shim.sql (local only)
+neon/migrations/   SQL: schema, workflow/audit, RLS, storage+search, public-answer guard, grants
+neon/seed.sql      generated seed (public metadata only, stable UUIDs)
+neon/verify/       rls_checks.sql (rolls back) + row_counts.sql
 scripts/       build-seed, seed-to-sql, prerender, env-check, termux-smoke, import-media, verify-db-local
 data/research-appendix.md   the source dossier (seed input)
 tests/         node:test — no native tools
 docs/screenshots/           real screenshots taken with Chromium in a cloud container (demo mode)
 ```
+
+`supabase/` is the previous target. Apply `neon/` only.
 
 ## Commands (Termux — **require on-device checking**, see COMPATIBILITY.md)
 
@@ -47,32 +51,57 @@ Seed regeneration (after changing the dossier): `npm run seed`.
 
 ## Demo mode vs. connected
 
-No `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` → **demo mode**. A permanent "מצב הדגמה" (demo mode) banner is shown, data comes from the seed, and changes are saved in that browser's localStorage only. The CMS is reached by picking a demo role. This is **never** a claim that the system is connected.
+Leave `VITE_DATA_MODE` unset → **demo mode**. A permanent "מצב הדגמה" (demo mode) banner is shown, data comes from the seed, and changes are saved in that browser's localStorage only. The CMS is reached by picking a demo role. This is **never** a claim that the system is connected.
 
-## Connecting Supabase
+Set `VITE_DATA_MODE=api` only when the server has `DATABASE_URL` and `AUTH_SECRET`. The browser then calls `/api` with an httpOnly session cookie.
 
-**Status:** connected to the `or-hameir` project (`https://anofukdvpkeqmqlvglyw.supabase.co`). Migrations 000100–000600 are applied and `rls_checks.sql` passes 48/48 there. Still open: loading the seed, the first owner, and the secret key for the server. For a new project, follow these steps:
+## Loading Postgres (Neon)
 
-1. Create a project in Supabase (the free tier is enough to start; do not upgrade without a decision).
-2. In the SQL Editor, run in order: `supabase/migrations/20260930000100_…` through `…000600_…`, then `supabase/seed/seed.sql`.
-3. Run `supabase/verify/rls_checks.sql` in the SQL Editor. It rolls back at the end; every line should print `PASS`.
-4. Create the first user (Authentication → Invite), then grant the owner role (one time, in the SQL Editor):
-   ```sql
-   begin;
-   select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-   insert into public.user_roles (user_id, role) select id, 'owner' from auth.users where email = 'OWNER_EMAIL';
-   commit;
-   ```
-5. Create `.env.local` from `.env.example`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (the publishable key only), and server-only `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `RATE_LIMIT_SALT`, `IMPORT_URL_ALLOWLIST`. The secret key **never** goes in a `VITE_` variable; `src/app/config.ts` refuses to run if a secret key reaches the browser.
-6. Authentication → URL Configuration: add the site address (and `http://127.0.0.1:5173` for development).
+The target database is the empty Neon project `ravlior` (id `frosty-mode-58590842`, region `aws-eu-central-1`, Postgres 18, database `ravlior`). This repository does **not** apply the SQL there. Apply it yourself, in order, on an empty database:
+
+1. `neon/migrations/001_schema.sql`
+2. `neon/migrations/002_workflow.sql`
+3. `neon/migrations/003_rls.sql`
+4. `neon/migrations/004_search.sql`
+5. `neon/migrations/005_public_answer.sql`
+6. `neon/migrations/006_grants.sql`
+7. `neon/seed.sql`
+
+Then, optionally, `neon/verify/row_counts.sql` and `neon/verify/rls_checks.sql`. The checks run in a transaction and roll back. Every line should print `PASS`.
+
+Local check (throwaway database, not Neon): `sh scripts/verify-db-local.sh`.
+
+### First owner
+
+There is no mailer. Create the first owner once in SQL (replace the email and choose a password; the email must already be lowercase). Do not commit the password.
+
+```sql
+begin;
+select set_config('app.actor', 'service', true);
+insert into public.app_users (email, password_hash, display_name)
+values ('owner@example.com', extensions.crypt('CHOOSE-A-PASSWORD', extensions.gen_salt('bf')), 'בעלים');
+insert into public.profiles (id, display_name)
+select id, display_name from public.app_users where email = 'owner@example.com';
+insert into public.user_roles (user_id, role)
+select id, 'owner' from public.app_users where email = 'owner@example.com';
+commit;
+```
+
+Later staff are invited from the CMS. The one-time link (`/accept?token=…`) is shown in the admin UI; it is not emailed.
+
+### Environment
+
+Copy `.env.example` to `.env.local`. Server-only: `DATABASE_URL`, `AUTH_SECRET` (at least 16 characters), `RATE_LIMIT_SALT`, `IMPORT_URL_ALLOWLIST`. Public: `VITE_DATA_MODE=api`, `VITE_SITE_URL`, `VITE_API_BASE`. `src/app/config.ts` refuses to run if a database URL or secret is placed in a `VITE_` variable.
+
+Sessions are an httpOnly cookie (`or_session`). Authorization is `SET LOCAL ROLE app_anon` or `app_api` plus `app.user_id`, so anonymous visitors see published rows only. The table owner is used only for login, invites, question intake, rate limits, and assembling uploads.
 
 ## Media
 
-Priority: official embed (YouTube only, `youtube-nocookie`, loaded on click) → authorised direct URL → our own file in Storage → link to the source. No YouTube extraction, no DRM/login bypass, no crawling. Large uploads go straight from the browser to Storage (TUS, 6MB chunks) and never through our server. For authorised files from an external source: `scripts/import-media.ts` is resumable, with a manifest, retries, a checksum and SSRF protection. It runs on the phone and does not promise 24/7 operation.
+Priority: official embed (YouTube only, `youtube-nocookie`, loaded on click) → authorised direct URL → our own file in Postgres storage → link to the source. No YouTube extraction, no DRM/login bypass, no crawling. Browser uploads are chunked to `/api/media/upload` (about 1.5MB). Private voice answers are served with a short HMAC URL (`AUTH_SECRET`, 300 seconds). Public buckets stream without a signature. For authorised files from an external source: `scripts/import-media.ts` is resumable, with a manifest, retries, a checksum and SSRF protection. It runs on the phone and does not promise 24/7 operation.
 
 ## Deploy — end of the project only
 
-Not deployed. When instructed: connect the repository to Vercel, set the environment variables (public `VITE_*` + server-only), build command `npm run build`, output `dist`. Security headers and redirects are in `vercel.json`. Setting `VITE_SITE_URL` produces canonical URLs and a sitemap.
+Not deployed. When instructed: connect the repository to Vercel, set the environment variables (public `VITE_*` + server-only), build command `npm run build`, output `dist`. Security headers and redirects are in `vercel.json`. Setting `VITE_SITE_URL` produces canonical URLs and a sitemap. If `DATABASE_URL` is present at build time, pre-render reads published rows from Postgres; if the query fails, the build fails.
 
 ## Documents
 

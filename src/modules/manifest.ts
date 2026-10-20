@@ -26,7 +26,7 @@ export interface ModuleManifest {
   navigation: { label: string; href: string }[];
   permissions: { action: string; roles: Role[] }[];
   settings: SettingField[];
-  /** SQL migration files (under supabase/migrations) this module relies on. */
+  /** SQL migration files (under neon/migrations) this module relies on. */
   migrations: string[];
   /** Feature flag name; its value lives in public.modules.enabled. */
   featureFlag: string;
@@ -34,7 +34,7 @@ export interface ModuleManifest {
   enabledByDefault: boolean;
 }
 
-const CORE_SQL = ['20260930000100_core_schema.sql', '20260930000200_workflow_audit.sql', '20260930000300_rls.sql'];
+const CORE_SQL = ['001_schema.sql', '002_workflow.sql', '003_rls.sql'];
 const EDIT: Role[] = ['owner', 'admin', 'editor'];
 const REVIEW: Role[] = ['owner', 'admin', 'reviewer', 'rabbi'];
 
@@ -46,7 +46,7 @@ export const MODULES: ModuleManifest[] = [
     navigation: [{ label: 'ספרייה', href: '/library' }],
     permissions: [{ action: 'content.edit', roles: EDIT }, { action: 'content.publish', roles: REVIEW }],
     settings: [{ key: 'pageSize', label: 'פריטים בעמוד', type: 'number', default: 24 }],
-    migrations: [...CORE_SQL, '20260930000400_storage_search.sql'], featureFlag: 'module.library', enabledByDefault: true,
+    migrations: [...CORE_SQL, '004_search.sql'], featureFlag: 'module.library', enabledByDefault: true,
   },
   {
     id: 'media', version: '1.0.0', name: 'מדיה ונגנים', description: 'מתאמי ספקים, נגן אודיו מתמשך, העלאות ל-Storage.',
@@ -55,7 +55,7 @@ export const MODULES: ModuleManifest[] = [
     navigation: [],
     permissions: [{ action: 'media.upload', roles: EDIT }],
     settings: [{ key: 'allowUploads', label: 'לאפשר העלאות קבצים', type: 'boolean', default: true }],
-    migrations: [...CORE_SQL, '20260930000400_storage_search.sql'], featureFlag: 'module.media', enabledByDefault: true,
+    migrations: [...CORE_SQL, '004_search.sql'], featureFlag: 'module.media', enabledByDefault: true,
   },
   {
     id: 'books', version: '1.0.0', name: 'ספרים ועלונים', description: 'ספרים, קונטרסים ועלונים עם פרטי מקור.',

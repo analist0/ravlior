@@ -8,12 +8,15 @@
 //                   "rightsEvidence": "מייל מהלשכה 01.10.2026", "contentId": "<uuid optional>", "maxBytes": 300000000 }]
 // State is kept in import-jobs/state.json so a killed process (Android may stop Termux) resumes
 // where it stopped: partial downloads continue with HTTP Range when the server supports it,
-// uploads continue via TUS. Run it again to resume. It does not run 24/7 by itself.
+// uploads resume by writing the finished file into Postgres storage. Run it again to resume.
+// It does not run 24/7 by itself.
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, openSync, readSync, closeSync, createWriteStream } from 'node:fs';
 import { request } from 'node:https';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { asService } from '../server/db.ts';
 import { checkUrl, guardedLookup, guardedProbe } from '../server/lib/ssrf.ts';
 import { checkUpload, storagePath } from '../src/shared/upload-policy.ts';
 
@@ -112,34 +115,31 @@ function realDownload(allow: string[]) {
     req.end();
   });
 }
+function siteOrigin(): string {
+  return (process.env.VITE_SITE_URL ?? process.env.SITE_URL ?? '').replace(/\/$/, '');
+}
 async function realUpload(file: string, path: string, mime: string, size: number) {
-  const url = process.env.SUPABASE_URL!.replace(/\/$/, '');
-  const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const tus = await import('tus-js-client');
-  await new Promise<void>((res, rej) => {
-    const up = new tus.Upload(createReadStream(file), {
-      endpoint: `${url}/storage/v1/upload/resumable`, uploadSize: size, chunkSize: 6 * 1024 * 1024, retryDelays: [0, 3000, 10000, 30000],
-      headers: { authorization: `Bearer ${key}`, apikey: key, 'x-upsert': 'false' },
-      metadata: { bucketName: 'public-media', objectName: path, contentType: mime, cacheControl: '3600' },
-      onError: rej, onSuccess: () => res(),
-      onProgress: (a, b) => process.stdout.write(`\r  upload ${Math.round((a / b) * 100)}%`),
-    });
-    void up.findPreviousUploads().then((prev) => { if (prev[0]) up.resumeFromPreviousUpload(prev[0]); up.start(); });
-  });
-  process.stdout.write('\n');
+  const bytes = await readFile(file);
+  if (bytes.length !== size) throw new Error(`גודל הקובץ ${bytes.length} אינו תואם ${size}`);
+  await asService((sql) => sql(
+    `insert into public.storage_objects (bucket_id, name, mime, bytes, size)
+     values ('public-media', $1, $2, $3, $4)
+     on conflict (bucket_id, name) do update set mime = excluded.mime, bytes = excluded.bytes, size = excluded.size`,
+    [path, mime, bytes, size],
+  ));
 }
 async function realAttach(e: ManifestEntry, s: EntryState) {
   if (!e.contentId) return;
-  const url = process.env.SUPABASE_URL!.replace(/\/$/, '');
-  const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const publicUrl = `${url}/storage/v1/object/public/public-media/${s.storagePath}`;
-  const r = await fetch(`${url}/rest/v1/media_sources`, {
-    method: 'POST', headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json', prefer: 'return=minimal' },
-    body: JSON.stringify({ content_id: e.contentId, provider: 'storage', url: publicUrl, canonical_url: publicUrl, delivery_mode: 'storage', kind: 'media',
-      mime: s.mime, filesize: s.bytes, checksum: `sha256:${s.sha256}`, rights_status: 'licensed', rights_evidence: e.rightsEvidence,
-      storage_bucket: 'public-media', storage_path: s.storagePath, is_primary: false }),
-  });
-  if (!r.ok) throw new Error(`attach failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+  const site = siteOrigin();
+  if (!site.startsWith('https://')) throw new Error('VITE_SITE_URL must be an https origin so the stored media URL is public.');
+  const publicUrl = `${site}/api/media/public-media/${s.storagePath}`;
+  await asService((sql) => sql(
+    `insert into public.media_sources
+       (content_id, provider, url, canonical_url, delivery_mode, kind, mime, filesize, checksum,
+        rights_status, rights_evidence, storage_bucket, storage_path, is_primary)
+     values ($1, 'storage', $2, $2, 'storage', 'media', $3, $4, $5, 'licensed', $6, 'public-media', $7, false)`,
+    [e.contentId, publicUrl, s.mime, s.bytes, `sha256:${s.sha256}`, e.rightsEvidence, s.storagePath],
+  ));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -148,7 +148,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const statePath = resolve(dir, 'state.json');
   const allow = (process.env.IMPORT_URL_ALLOWLIST ?? '').split(',').map((x) => x.trim()).filter(Boolean);
   if (!allow.length) { console.error('IMPORT_URL_ALLOWLIST is empty — list the hosts you are authorised to download from.'); process.exit(2); }
-  if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY)) { console.error('SUPABASE_URL / SUPABASE_SECRET_KEY missing (.env.local).'); process.exit(2); }
+  if (!process.env.DATABASE_URL) { console.error('DATABASE_URL missing (.env.local).'); process.exit(2); }
+  if (!siteOrigin().startsWith('https://')) { console.error('VITE_SITE_URL must be an https origin.'); process.exit(2); }
   const manifest: ManifestEntry[] = JSON.parse(readFileSync(manifestPath, 'utf8'));
   const state: Record<string, EntryState> = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : {};
   const save = () => writeFileSync(statePath, JSON.stringify(state, null, 1));

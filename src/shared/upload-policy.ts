@@ -1,4 +1,4 @@
-// Upload policy — mirrors the bucket limits in supabase/migrations/*_storage_search.sql.
+// Upload policy — mirrors the bucket limits in neon/migrations/004_search.sql.
 // Checked in the browser before upload; Storage enforces size/MIME again server-side.
 
 export type BucketId = 'public-media' | 'public-books' | 'private-submissions' | 'private-drafts';

@@ -9,7 +9,7 @@ import { BUCKETS, checkUpload, signedUrlValid, type BucketId } from '../shared/u
 import { useAdmin } from './AdminApp.tsx';
 import { canEdit } from '../shared/workflow.ts';
 
-/** Browser → Supabase Storage directly (TUS resumable for large files). Never through our server. */
+/** Browser → API in chunks. Bytes are stored by the server; the browser never holds database credentials. */
 export function Uploader({ bucket, accept, onDone }: { bucket: BucketId; accept?: string; onDone: (r: UploadResult) => void }) {
   const repo = useRepo();
   const toast = useToast();

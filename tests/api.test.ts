@@ -4,26 +4,25 @@ import { handle, type Deps } from '../server/handlers.ts';
 import { sha256Hex } from '../src/shared/questions.ts';
 import { SsrfError } from '../server/lib/ssrf.ts';
 
-// Marked mock: an in-memory stand-in for the Supabase REST client. Integration against a real
-// project is covered by supabase/verify/rls_checks.sql, not by this file.
+// In-memory stand-in for the database client. SQL authorization is covered by neon/verify/rls_checks.sql.
 function mockDeps(over: Partial<Deps> = {}) {
   const rows: Record<string, unknown>[] = [];
   const roles: Record<string, string[]> = { 'jwt-editor': ['editor'], 'jwt-viewer': ['viewer'] };
   const deps: Deps = {
-    env: { supabaseUrl: 'https://proj.supabase.co', secretKey: 'test', rateSalt: 'salt', importAllowlist: ['kol-barama.co.il'], configured: true },
+    env: { databaseUrl: 'postgres://local/test', authSecret: 'test-secret-16chars', rateSalt: 'salt', importAllowlist: ['kol-barama.co.il'], siteUrl: '', configured: true },
     now: Date.now,
     probe: async (u) => { if (u.includes('127.0.0.1')) throw new SsrfError('blocked'); return { finalUrl: u, status: 200, contentType: 'audio/mpeg', contentLength: 1234, redirects: 0, bytesRead: 0 }; },
     client: {
       insertQuestion: async (r: Record<string, unknown>) => { rows.push(r); return null; },
       rateLimit: async () => true,
       questionByCode: async (code: string) => rows.filter((r) => r.tracking_code === code).map((r) => ({ token_hash: r.token_hash as string, answer_audio_path: 'a/b.mp3', status: 'private_delivered', approved_by: 'rabbi' })),
-      signPrivate: async () => ({ signedURL: '/object/sign/private-submissions/a/b.mp3?token=t' }),
-      userFromJwt: async (jwt: string) => (roles[jwt] ? { id: jwt } : null),
+      signPrivate: async () => ({ url: '/api/media/private-submissions/a/b.mp3?exp=1&sig=abc' }),
+      userFromToken: async (token: string) => (roles[token] ? { id: token } : null),
       rolesOf: async (id: string) => (roles[id] ?? []).map((role) => ({ role })),
-      listUsers: async () => ({ users: [] }),
+      listUsers: async () => [],
       allRoles: async () => [],
-      invite: async () => null,
-    } as unknown as NonNullable<Deps['client']>,
+      invite: async () => ({ token: 'invite-token', expiresAt: new Date(0).toISOString() }),
+    },
     ...over,
   };
   return { deps, rows };
@@ -56,7 +55,7 @@ test('submit: honeypot, too-fast, invalid, oversized and rate-limited requests',
   assert.deepEqual(codes, [201, 201, 201, 429]);
 });
 
-test('submit without Supabase configured is refused (no fake success)', async () => {
+test('submit without a database configured is refused (no fake success)', async () => {
   const { deps } = mockDeps({ client: null });
   deps.env.configured = false;
   assert.equal((await handle(post('/api/questions', q()), '4.4.4.4', deps)).status, 503);
@@ -69,7 +68,7 @@ test('voice answer: token verified server-side; short signed URL', async () => {
   const ok = await handle(post('/api/questions/voice', { code: created.trackingCode, token: created.token }), '5.5.5.5', deps);
   assert.equal(ok.status, 200);
   const b = (await ok.json()) as { url: string; expiresIn: number };
-  assert.match(b.url, /^https:\/\/proj\.supabase\.co\/storage\/v1\/object\/sign\//);
+  assert.match(b.url, /^\/api\/media\/private-submissions\//);
   assert.equal(b.expiresIn, 300);
 });
 

@@ -1,4 +1,15 @@
-# STATUS — 30.09.2026
+# STATUS — 20.10.2026
+
+## Neon migration (20.10.2026)
+- The running code no longer uses Supabase. The browser calls `/api`. The server uses `DATABASE_URL` (`@neondatabase/serverless` on Neon, `pg` on localhost) and never sends that URL to the browser.
+- Auth is an httpOnly session cookie (`or_session`) backed by `app_users` / `sessions`. Roles, invites, and the rabbi-approval guard are unchanged. Invites are not emailed: the CMS shows the one-time `/accept` link.
+- RLS uses `app_anon` / `app_api` and `app.user_id`. Anonymous visitors see published content only. Private tables have no policies for those roles.
+- Files live in `storage_objects` (bytea). Private voice answers use a short HMAC URL signed with `AUTH_SECRET`.
+- SQL to apply, in order: `neon/migrations/001_schema.sql` through `006_grants.sql`, then `neon/seed.sql`. Verified on local Postgres 18 with `scripts/verify-db-local.sh`: dossier row counts match, and `neon/verify/rls_checks.sql` passes. **Not applied** to the Neon project `frosty-mode-58590842`. The live Supabase project was not modified. Not deployed.
+- Demo mode remains the default (`VITE_DATA_MODE` unset). Pre-render without `DATABASE_URL` still builds from the seed (243 pages).
+- `supabase/` is retired history. Do not apply it to Neon.
+
+## Previous Supabase work (kept as history)
 
 ## Completed (in code, with tests in the cloud environment)
 - **Stack and gate:** React 19 + TS 6 + Vite 7 (Rollup/esbuild with documented android-arm64 builds), no SWC/Rolldown/sharp. Env check, dependency matrix and a Termux smoke script.

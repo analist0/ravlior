@@ -6,8 +6,8 @@ import type {
 import type { BucketId } from '../shared/upload-policy.ts';
 
 // One repository contract, two implementations:
-//  - DemoRepository  (src/data/demo-repo.ts): in-browser, seeded, clearly marked as DEMO.
-//  - SupabaseRepository (src/data/supabase-repo.ts): real DB/Auth/Storage behind RLS.
+//  - DemoRepository (src/data/demo-repo.ts): in-browser, seeded, clearly marked as DEMO.
+//  - ApiRepository (src/data/api-repo.ts): cookie session + /api. The database stays on the server.
 
 export type EntityName = 'content' | 'topics' | 'series' | 'pages' | 'institutions' | 'events' | 'publicQuestions';
 export type EntityRecord = ContentItem | Topic | Series | Page | Institution | EventRecord | PublicQuestion;
@@ -102,7 +102,8 @@ export interface AdminRepo {
 
   listUsers(): Promise<StaffUser[]>;
   setRole(userId: string, role: Role, grant: boolean): Promise<void>;
-  inviteUser(email: string): Promise<void>;
+  /** Creates an invite. The token is shown once to an admin; there is no outbound email. */
+  inviteUser(email: string): Promise<{ token: string; expiresAt: string }>;
 
   upload(bucket: BucketId, file: File, onProgress: (pct: number) => void, signal?: AbortSignal): Promise<UploadResult>;
   signedUrl(bucket: BucketId, path: string, seconds: number): Promise<{ url: string; expiresAt: number }>;
@@ -115,7 +116,7 @@ export interface AdminRepo {
 }
 
 export interface Repository {
-  mode: 'demo' | 'supabase';
+  mode: 'demo' | 'api';
   listContent(q: ContentQuery): Promise<PageResult<ContentItem>>;
   getContent(slug: string): Promise<ContentItem | null>;
   getContentByIds(ids: string[]): Promise<ContentItem[]>;
@@ -141,6 +142,8 @@ export interface Repository {
   onAuthChange(cb: (s: Session | null) => void): () => void;
   signIn(email: string, password: string): Promise<Session>;
   signOut(): Promise<void>;
+  /** Accept a staff invite (connected mode). Returns the new session. */
+  acceptInvite(token: string, password: string, displayName: string): Promise<Session>;
   /** Demo only: pick a role to explore the CMS. Not available when connected. */
   demoSignIn?(role: Role): Promise<Session>;
   /** Demo only: wipe local demo data back to the seed. */

@@ -150,6 +150,20 @@ function Section({ s }: { s: HomeSection }) {
   );
 }
 
+function WeekQuestion() {
+  const repo = useRepo();
+  const week = useAsync(() => repo.weekQuestion(), [repo]);
+  if (!week.data) return null;
+  const q = week.data;
+  return (
+    <section className="section container" aria-labelledby="week-q">
+      <p className="eyebrow">שאלת השבוע</p>
+      <h2 id="week-q"><Link to={`/responsa/${q.slug}`} style={{ color: 'var(--text)', textDecoration: 'none' }}>{q.questionText.slice(0, 180)}</Link></h2>
+      <p className="soft">{q.attribution}</p>
+    </section>
+  );
+}
+
 export function HomePage() {
   const repo = useRepo();
   const sections = useAsync(() => repo.getHomeSections(), [repo]);
@@ -180,6 +194,7 @@ export function HomePage() {
           {showActions && <Actions />}
         </div>
       </section>
+      <WeekQuestion />
       {sections.error && <div className="container"><ErrorState error={sections.error} onRetry={sections.reload} /></div>}
       {enabled.filter((s) => s.kind !== 'actions').map((s) => (s.kind === 'continue' ? <Continue key={s.id} title={s.title} /> : <Section key={s.id} s={s} />))}
     </>

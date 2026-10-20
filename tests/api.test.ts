@@ -7,21 +7,28 @@ import { SsrfError } from '../server/lib/ssrf.ts';
 // In-memory stand-in for the database client. SQL authorization is covered by neon/verify/rls_checks.sql.
 function mockDeps(over: Partial<Deps> = {}) {
   const rows: Record<string, unknown>[] = [];
+  const buckets = new Map<string, number>();
   const roles: Record<string, string[]> = { 'jwt-editor': ['editor'], 'jwt-viewer': ['viewer'] };
   const deps: Deps = {
-    env: { databaseUrl: 'postgres://local/test', authSecret: 'test-secret-16chars', rateSalt: 'salt', importAllowlist: ['kol-barama.co.il'], siteUrl: '', configured: true },
+    env: { databaseUrl: 'postgres://local/test', authSecret: 'test-secret-16chars', rateSalt: 'salt', importAllowlist: ['kol-barama.co.il'], siteUrl: '', turnstileSecret: '', configured: true },
     now: Date.now,
     probe: async (u) => { if (u.includes('127.0.0.1')) throw new SsrfError('blocked'); return { finalUrl: u, status: 200, contentType: 'audio/mpeg', contentLength: 1234, redirects: 0, bytesRead: 0 }; },
     client: {
       insertQuestion: async (r: Record<string, unknown>) => { rows.push(r); return null; },
-      rateLimit: async () => true,
-      questionByCode: async (code: string) => rows.filter((r) => r.tracking_code === code).map((r) => ({ token_hash: r.token_hash as string, answer_audio_path: 'a/b.mp3', status: 'private_delivered', approved_by: 'rabbi' })),
+      rateLimit: async (bucket: string, _window: number, max: number) => {
+        const n = (buckets.get(bucket) ?? 0) + 1;
+        buckets.set(bucket, n);
+        return n <= max;
+      },
+      questionByCode: async (code: string) => rows.filter((r) => r.tracking_code === code).map((r) => ({ token_hash: r.token_hash as string, notify_token_hash: null, answer_audio_path: 'a/b.mp3', status: 'private_delivered', approved_by: 'rabbi' })),
       signPrivate: async () => ({ url: '/api/media/private-submissions/a/b.mp3?exp=1&sig=abc' }),
       userFromToken: async (token: string) => (roles[token] ? { id: token } : null),
       rolesOf: async (id: string) => (roles[id] ?? []).map((role) => ({ role })),
       listUsers: async () => [],
       allRoles: async () => [],
       invite: async () => ({ token: 'invite-token', expiresAt: new Date(0).toISOString() }),
+      followUp: async () => ({ trackingCode: 'ABCD-EFGH', token: 't'.repeat(43) }),
+      attachVoice: async () => undefined,
     },
     ...over,
   };
@@ -80,6 +87,19 @@ test('probe: requires staff; SSRF errors surface as 400', async () => {
   assert.equal(ok.status, 200);
   assert.equal(((await ok.json()) as { playableNatively: boolean }).playableNatively, true);
   assert.equal((await handle(post('/api/import/probe', { url: 'https://127.0.0.1/x' }, { authorization: 'Bearer jwt-editor' }), '6.6.6.6', deps)).status, 400);
+});
+
+test('turnstile: a configured secret rejects a missing token without calling the network', async () => {
+  const { deps } = mockDeps();
+  deps.env.turnstileSecret = 'test-secret';
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (() => { throw new Error('network'); }) as typeof fetch;
+  try {
+    const res = await handle(post('/api/questions', q()), '9.9.9.9', deps);
+    assert.equal(res.status, 400);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test('admin users endpoint requires admin/owner', async () => {

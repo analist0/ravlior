@@ -24,7 +24,7 @@ export const BUCKETS: Record<BucketId, { public: boolean; maxBytes: number; mime
   'public-media': { public: true, maxBytes: 500 * 1024 * 1024, label: 'מדיה ציבורית מאושרת',
     mimes: ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'video/mp4', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'] },
   'public-books': { public: true, maxBytes: 100 * 1024 * 1024, label: 'ספרים ועלונים', mimes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] },
-  'private-submissions': { public: false, maxBytes: 50 * 1024 * 1024, label: 'תשובות קוליות פרטיות', mimes: ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg'] },
+  'private-submissions': { public: false, maxBytes: 50 * 1024 * 1024, label: 'תשובות קוליות פרטיות', mimes: ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/webm', 'video/webm'] },
   'private-drafts': { public: false, maxBytes: 500 * 1024 * 1024, label: 'טיוטות פרטיות',
     mimes: ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'video/mp4', 'video/webm', 'image/jpeg', 'image/png', 'image/webp', 'application/pdf'] },
 };

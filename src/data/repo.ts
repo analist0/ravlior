@@ -52,6 +52,7 @@ export interface QuestionInput {
   publishConsent: boolean;
   website: string; // honeypot — must stay empty
   startedAt: number; // form render time (anti-bot)
+  turnstileToken?: string;
 }
 
 export interface ImportRow {
@@ -70,8 +71,8 @@ export interface AdminRepo {
   list(entity: EntityName, opts: ListOptions): Promise<PageResult<EntityRecord>>;
   get(entity: EntityName, id: string): Promise<EntityRecord | null>;
   create(entity: EntityName, data: Partial<EntityRecord>): Promise<EntityRecord>;
-  update(entity: EntityName, id: string, patch: Partial<EntityRecord>, expectedVersion: number): Promise<EntityRecord>;
-  transition(entity: EntityName, id: string, to: ContentStatus, expectedVersion: number): Promise<EntityRecord>;
+  update(entity: EntityName, id: string, patch: Partial<EntityRecord>, expectedVersion: number, reason?: string): Promise<EntityRecord>;
+  transition(entity: EntityName, id: string, to: ContentStatus, expectedVersion: number, reason?: string): Promise<EntityRecord>;
   softDelete(entity: EntityName, id: string, expectedVersion: number): Promise<void>;
   restore(entity: EntityName, id: string, expectedVersion: number): Promise<void>;
   destroy(entity: EntityName, id: string): Promise<void>;
@@ -93,12 +94,19 @@ export interface AdminRepo {
   saveHomeSections(sections: HomeSection[]): Promise<HomeSection[]>;
   setModule(id: string, enabled: boolean, settings: Record<string, unknown>): Promise<void>;
 
-  listQuestions(opts: { status?: QuestionStatus | ''; page?: number; q?: string; sort?: 'newest' | 'status' | 'code' }): Promise<PageResult<QuestionSubmission>>;
+  listQuestions(opts: { status?: QuestionStatus | ''; page?: number; q?: string; sort?: 'newest' | 'oldest' | 'status' | 'code' | 'priority' }): Promise<PageResult<QuestionSubmission>>;
   getQuestion(id: string): Promise<QuestionSubmission | null>;
   updateQuestion(id: string, patch: Partial<QuestionSubmission>, expectedVersion: number): Promise<QuestionSubmission>;
-  transitionQuestion(id: string, to: QuestionStatus, expectedVersion: number): Promise<QuestionSubmission>;
-  /** Creates the public, edited copy after approval + consent, and marks the submission published. */
-  publishQuestion(id: string, expectedVersion: number, pub: { questionText: string; answerBlocks: Block[]; topicId: string | null; attribution: string }): Promise<void>;
+  transitionQuestion(id: string, to: QuestionStatus, expectedVersion: number, reason?: string): Promise<QuestionSubmission>;
+  /** Builds the public answer from the approved text. An edited question wording waits for the rabbi. */
+  publishQuestion(id: string, expectedVersion: number, pub: { questionText: string; answerBlocks?: Block[]; topicId: string | null; attribution: string; categoryId?: string | null; answerKind?: string }): Promise<{ published: boolean; needsReapproval: boolean; id?: string }>;
+  unpublishPublic(id: string, expectedVersion: number, mode: 'draft' | 'hidden', reason: string): Promise<void>;
+  questionStats(): Promise<{ pendingRabbi: number; open: number; overdue: number; avgResponseDays: number | null; byTopic: { topicId: string | null; count: number }[] }>;
+  listStaff(): Promise<{ id: string; displayName: string }[]>;
+  listTemplates(): Promise<{ id: string; title: string; body: string }[]>;
+  saveTemplate(input: { id?: string; title: string; body: string }): Promise<{ id: string; title: string; body: string }>;
+  deleteTemplate(id: string): Promise<void>;
+  setEta(days: number): Promise<number>;
 
   listUsers(): Promise<StaffUser[]>;
   setRole(userId: string, role: Role, grant: boolean): Promise<void>;
@@ -131,7 +139,14 @@ export interface Repository {
   getMenus(): Promise<Menu[]>;
   getHomeSections(): Promise<HomeSection[]>;
   listPublicQuestions(q?: string): Promise<PublicQuestion[]>;
+  searchResponsa(opts: { q?: string; topic?: string; category?: string; page?: number }): Promise<PageResult<PublicQuestion>>;
+  suggestQuestions(q: string): Promise<{ slug: string; questionText: string }[]>;
+  listCategories(): Promise<{ id: string; slug: string; name: string }[]>;
+  weekQuestion(): Promise<PublicQuestion | null>;
+  etaDays(): Promise<number>;
   getPublicQuestion(slug: string): Promise<PublicQuestion | null>;
+  followUp(code: string, token: string, questionText: string): Promise<{ trackingCode: string; token: string }>;
+  submitVoice(code: string, token: string, file: Blob): Promise<void>;
   getModules(): Promise<ModuleState[]>;
   submitQuestion(input: QuestionInput): Promise<{ trackingCode: string; token: string }>;
   trackQuestion(code: string, token: string): Promise<TrackResult | null>;

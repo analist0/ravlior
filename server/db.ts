@@ -61,6 +61,8 @@ function hebrew(message: string): string {
   if (/own owner role/i.test(message)) return 'בעלים לא יכול להסיר מעצמו את תפקיד הבעלים.';
   if (/not allowed/i.test(message)) return 'אין הרשאה לפעולה הזו.';
   if (/staff only/i.test(message)) return 'הפעולה שמורה לצוות.';
+  if (/answer is locked/i.test(message)) return 'התשובה נעולה לאחר שנמסרה. אי אפשר לשנות אותה בלי להסיר את הפרסום.';
+  if (/audit reason required/i.test(message)) return 'נדרשת סיבה ליומן עבור המעבר או הסרת הפרסום.';
   if (/duplicate key|unique/i.test(message)) return 'רשומה עם אותו מזהה או כתובת כבר קיימת.';
   return 'השמירה נדחתה.';
 }
@@ -73,7 +75,7 @@ export function mapDbError(e: unknown): unknown {
   if (code === '42501' || /row-level security|permission denied/i.test(message)) return new ApiError(403, hebrew(message), '42501');
   if (code === '23505') return new ApiError(409, 'רשומה עם אותו מזהה או כתובת כבר קיימת.', '23505');
   if (code === '23514' || code === '23502') return new ApiError(422, hebrew(message) === 'השמירה נדחתה.' ? 'הנתונים אינם עומדים בכללי השמירה.' : hebrew(message), code);
-  if (/transition|consent|approved_by_rabbi|new rows start|only an owner|owner role|not allowed|staff only/i.test(message)) {
+  if (/transition|consent|approved_by_rabbi|new rows start|only an owner|owner role|not allowed|staff only|answer is locked|audit reason required/i.test(message)) {
     return new ApiError(403, hebrew(message), code || '42501');
   }
   return e;

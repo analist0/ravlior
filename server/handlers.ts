@@ -9,6 +9,7 @@ import { UpstreamError, type DataClient } from './lib/data-client.ts';
 import { RateLimiter } from './lib/rate-limit.ts';
 import { readObject, uploadChunk } from './media-http.ts';
 import { guardedProbe, SsrfError, type ProbeResult } from './lib/ssrf.ts';
+import { notifyStaff } from './mailer.ts';
 import { dispatch } from './store.ts';
 
 export interface Deps {
@@ -18,10 +19,20 @@ export interface Deps {
   now: () => number;
 }
 
-const perMinute = new RateLimiter(60_000, 3);
-const perDay = new RateLimiter(86_400_000, 20);
 const trackLimiter = new RateLimiter(60_000, 20);
 const loginLimiter = new RateLimiter(60_000, 10);
+
+function quiet(p: Promise<unknown>): void {
+  void p.catch((e) => console.error('[notify] failed:', e instanceof Error ? e.message.slice(0, 120) : 'unknown'));
+}
+
+async function verifyTurnstile(token: string, secret: string, ip: string): Promise<boolean> {
+  const body = new URLSearchParams({ secret, response: token, remoteip: ip });
+  const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body });
+  if (!res.ok) return false;
+  const data = (await res.json()) as { success?: boolean };
+  return data.success === true;
+}
 
 export function defaultDeps(): Deps {
   const env = readEnv();
@@ -58,13 +69,19 @@ async function requireStaff(req: Request, d: Deps, allowed: string[]): Promise<{
 }
 
 async function submitQuestion(req: Request, d: Deps, ip: string): Promise<Response> {
-  const body = await readJson(req);
+  const body = await readJson(req) as { turnstileToken?: unknown };
   const v = validateQuestion(body, d.now());
   if (!v.ok) return v.bot ? err(400, 'לא ניתן לשלוח את הטופס כעת.') : json({ error: Object.values(v.errors)[0], fields: v.errors }, 422);
+  if (d.env.turnstileSecret) {
+    const turnstileToken = typeof body.turnstileToken === 'string' ? body.turnstileToken : '';
+    if (!turnstileToken) return err(400, 'נדרש אימות אנושי.');
+    if (!(await verifyTurnstile(turnstileToken, d.env.turnstileSecret, ip))) return err(400, 'אימות האנושיות נכשל. נסו שוב.');
+  }
   const fp = await fingerprint(req, ip, d.env.rateSalt);
-  if (!perMinute.hit(fp, d.now()) || !perDay.hit(fp, d.now())) return err(429, 'נשלחו יותר מדי שאלות. נסו שוב מאוחר יותר.');
   if (!d.client) return err(503, 'קבלת שאלות אינה זמינה: השרת אינו מחובר למסד הנתונים.');
-  if (!(await d.client.rateLimit(`q:${fp}`, 3600, 10))) return err(429, 'נשלחו יותר מדי שאלות. נסו שוב מאוחר יותר.');
+  if (!(await d.client.rateLimit(`qmin:${fp}`, 60, 3)) || !(await d.client.rateLimit(`qday:${fp}`, 86_400, 20))) {
+    return err(429, 'נשלחו יותר מדי שאלות. נסו שוב מאוחר יותר.');
+  }
   const token = newToken();
   const tokenHash = await sha256Hex(token);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -75,6 +92,7 @@ async function submitQuestion(req: Request, d: Deps, ip: string): Promise<Respon
         contact_email: v.value.contactEmail, topic_id: v.value.topicId, question_text: v.value.questionText,
         publish_consent: v.value.publishConsent, client_fingerprint: fp.slice(0, 32),
       });
+      quiet(notifyStaff('שאלה חדשה', `מספר מעקב: ${trackingCode}\n${d.env.siteUrl}/admin/questions`));
       return json({ trackingCode, token }, 201);
     } catch (e) {
       if (e instanceof UpstreamError && e.status === 409) continue;
@@ -84,6 +102,28 @@ async function submitQuestion(req: Request, d: Deps, ip: string): Promise<Respon
   return err(500, 'לא ניתן היה ליצור מספר מעקב. נסו שוב.');
 }
 
+async function followUp(req: Request, d: Deps, ip: string): Promise<Response> {
+  if (!d.client) return err(503, 'השרת אינו מחובר');
+  if (!trackLimiter.hit(await fingerprint(req, ip, d.env.rateSalt), d.now())) return err(429, 'יותר מדי בקשות');
+  const b = (await readJson(req, 32 * 1024)) as { code?: unknown; token?: unknown; questionText?: unknown };
+  if (typeof b.code !== 'string' || typeof b.token !== 'string' || b.token.length < 32 || typeof b.questionText !== 'string') return err(400, 'פרטים חסרים');
+  const created = await d.client.followUp(b.code, b.token, b.questionText);
+  quiet(notifyStaff('שאלת המשך', `מספר מעקב: ${created.trackingCode}\n${d.env.siteUrl}/admin/questions`));
+  return json(created, 201);
+}
+
+async function voiceIn(req: Request, d: Deps): Promise<Response> {
+  if (!d.client) return err(503, 'השרת אינו מחובר');
+  const code = req.headers.get('x-code') ?? '';
+  const token = req.headers.get('x-token') ?? '';
+  if (!code || token.length < 32) return err(400, 'פרטים חסרים');
+  const buf = new Uint8Array(await req.arrayBuffer());
+  if (buf.byteLength > 4_000_000) return err(413, 'ההקלטה גדולה מדי');
+  if (buf.byteLength < 32) return err(422, 'ההקלטה קצרה מדי');
+  await d.client.attachVoice(code, token, buf, req.headers.get('content-type') ?? '');
+  return json({ ok: true });
+}
+
 async function voiceAnswer(req: Request, d: Deps, ip: string): Promise<Response> {
   if (!d.client) return err(503, 'השרת אינו מחובר');
   if (!trackLimiter.hit(await fingerprint(req, ip, d.env.rateSalt), d.now())) return err(429, 'יותר מדי בקשות');
@@ -91,7 +131,8 @@ async function voiceAnswer(req: Request, d: Deps, ip: string): Promise<Response>
   if (typeof b.code !== 'string' || typeof b.token !== 'string' || b.token.length < 32) return err(400, 'פרטים חסרים');
   const [row] = await d.client.questionByCode(b.code.toUpperCase());
   const hash = await sha256Hex(b.token);
-  if (!row || !safeEqualHex(row.token_hash, hash)) return err(404, 'לא נמצא');
+  const tokenOk = !!row && (safeEqualHex(row.token_hash, hash) || (!!row.notify_token_hash && safeEqualHex(row.notify_token_hash, hash)));
+  if (!row || !tokenOk) return err(404, 'לא נמצא');
   if (!row.answer_audio_path || !row.approved_by || !['private_delivered', 'published', 'closed'].includes(row.status)) return err(404, 'אין תשובה קולית זמינה');
   const signed = await d.client.signPrivate('private-submissions', row.answer_audio_path, 300);
   return json({ url: signed.url, expiresIn: 300 });
@@ -198,6 +239,8 @@ export async function handle(req: Request, ip = '0.0.0.0', deps: Deps = defaultD
   try {
     if (pathname === '/api/health' && req.method === 'GET') return json({ ok: true, database: deps.env.configured ? 'configured' : 'not-configured' });
     if (pathname === '/api/questions' && req.method === 'POST') return await submitQuestion(req, deps, ip);
+    if (pathname === '/api/questions/follow-up' && req.method === 'POST') return await followUp(req, deps, ip);
+    if (pathname === '/api/questions/voice-in' && req.method === 'POST') return await voiceIn(req, deps);
     if (pathname === '/api/questions/voice' && req.method === 'POST') return await voiceAnswer(req, deps, ip);
     if (pathname === '/api/import/probe' && req.method === 'POST') return await probe(req, deps);
     if (pathname === '/api/admin/users' && (req.method === 'GET' || req.method === 'POST')) return await adminUsers(req, deps);

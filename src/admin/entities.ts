@@ -6,7 +6,7 @@ import { safeUrl } from '../shared/blocks.ts';
 export interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'number' | 'urls' | 'blocks' | 'ref-institution' | 'ref-topic';
+  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'number' | 'urls' | 'blocks' | 'csv' | 'ref-institution' | 'ref-topic' | 'ref-category';
   options?: [string, string][];
   required?: boolean;
   hint?: string;
@@ -125,7 +125,12 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
     fields: [
       { key: 'questionText', label: 'השאלה (ערוכה, ללא פרטים מזהים)', type: 'textarea', required: true, full: true },
       { key: 'topicId', label: 'נושא', type: 'ref-topic' },
+      { key: 'categoryId', label: 'מדף הלכה', type: 'ref-category' },
       { key: 'attribution', label: 'ייחוס התשובה', type: 'text', required: true },
+      { key: 'answerKind', label: 'סוג התשובה', type: 'select', options: [['written', 'כתובה'], ['oral', 'בעל פה'], ['both', 'כתובה ובעל פה']] },
+      { key: 'sources', label: 'מראי מקומות', type: 'textarea', full: true, hint: 'רק מקורות שצוינו בתשובה. אין להמציא.' },
+      { key: 'tags', label: 'תגיות', type: 'csv', hint: 'מופרדות בפסיק, עד 12.' },
+      { key: 'weekPick', label: 'שאלת השבוע', type: 'checkbox' },
       { key: 'answerBlocks', label: 'התשובה', type: 'blocks', full: true },
     ],
   },

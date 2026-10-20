@@ -16,14 +16,15 @@ export default function Dashboard() {
     const counts = await Promise.all(statuses.map((s) => repo.admin.list('content', { status: s, pageSize: 1 }).then((r) => [s, r.total] as const)));
     const questions = roles.some((r) => r !== 'viewer') ? await repo.admin.listQuestions({ status: 'submitted' }).then((r) => r.total, () => null) : null;
     const answered = roles.includes('rabbi') ? await repo.admin.listQuestions({ status: 'answered' }).then((r) => r.total, () => null) : null;
-    return { counts, questions, answered };
+    const qa = roles.some((r) => r !== 'viewer') ? await repo.admin.questionStats().catch(() => null) : null;
+    return { counts, questions, answered, qa };
   }, [repo]);
   return (
     <div>
       <h1>לוח בקרה</h1>
       {repo.mode === 'demo' && (
         <Notice tone="warn" icon="alert">
-          מצב הדגמה — אין חיבור למסד נתונים. כל שינוי נשמר בדפדפן זה בלבד. לחיבור אמיתי ראו README → „חיבור Supabase”.
+          מצב הדגמה — אין חיבור למסד נתונים. כל שינוי נשמר בדפדפן זה בלבד. לחיבור אמיתי ראו README → Loading Postgres.
           {isAdmin(roles) && <div style={{ marginTop: 8 }}><Button size="sm" variant="secondary" onClick={() => void confirm({ title: 'איפוס נתוני ההדגמה', body: 'כל השינויים המקומיים יימחקו והנתונים יחזרו לזרע המקורי.', confirmLabel: 'איפוס', danger: true }).then(async (ok) => { if (ok) { await repo.demoReset?.(); location.reload(); } })}>איפוס נתוני ההדגמה</Button></div>}
         </Notice>
       )}
@@ -43,6 +44,9 @@ export default function Dashboard() {
           <div className="admin-cards">
             {stats.data.questions !== null && <Link to="/admin/questions?status=submitted" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong>{stats.data.questions}</strong>שאלות חדשות למיון</Link>}
             {stats.data.answered !== null && <Link to="/admin/questions?status=answered" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong>{stats.data.answered}</strong>תשובות הממתינות לאישורך</Link>}
+            {stats.data.qa && <Link to="/admin/questions?sort=oldest" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong>{stats.data.qa.overdue}</strong>שאלות באיחור</Link>}
+            {stats.data.qa && <div className="stat"><strong>{stats.data.qa.pendingRabbi}</strong>ממתינות לרב</div>}
+            {stats.data.qa && <div className="stat"><strong>{stats.data.qa.avgResponseDays ?? '—'}</strong>ימים ממוצע עד מענה</div>}
             <Link to="/admin/content?status=in_review" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong><Icon name="eye" /></strong>תכנים לבדיקה</Link>
             <Link to="/admin/content/new" className="stat" style={{ textDecoration: 'none', color: 'var(--text)' }}><strong><Icon name="plus" /></strong>תוכן חדש</Link>
           </div>

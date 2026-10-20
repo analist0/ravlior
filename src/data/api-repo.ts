@@ -2,7 +2,7 @@
 import { API_BASE, SITE_URL } from '../app/config.ts';
 import { BUCKETS, checkUpload, storagePath, type BucketId } from '../shared/upload-policy.ts';
 import { PermissionError, VersionConflictError } from '../shared/workflow.ts';
-import type { ContentItem, ContentQuery, Role } from '../shared/types.ts';
+import type { ContentItem, ContentQuery, PublicQuestion, Role } from '../shared/types.ts';
 import type { AdminRepo, QuestionInput, Repository, Session } from './repo.ts';
 
 type Listener = (s: Session | null) => void;
@@ -46,7 +46,19 @@ export async function createApiRepository(): Promise<Repository> {
     getMenus: () => rpc('menus'),
     getHomeSections: () => rpc('home'),
     listPublicQuestions: (q) => rpc('pq.list', { q: q ?? '' }),
+    searchResponsa: (opts) => rpc('pq.search', opts),
+    suggestQuestions: (q) => rpc('pq.suggest', { q }),
+    listCategories: () => rpc('pq.categories'),
+    async weekQuestion() {
+      const rows = await rpc<PublicQuestion[]>('pq.week');
+      return rows[0] ?? null;
+    },
+    etaDays: () => rpc('pq.eta'),
     getPublicQuestion: (slug) => rpc('pq.get', { slug }),
+    followUp: (code, token, questionText) => call('/api/questions/follow-up', { method: 'POST', body: JSON.stringify({ code, token, questionText }) }),
+    async submitVoice(code, token, file) {
+      await call('/api/questions/voice-in', { method: 'POST', headers: { 'x-code': code, 'x-token': token, 'content-type': file.type || 'application/octet-stream' }, body: file });
+    },
     getModules: () => rpc('modules'),
     submitQuestion: (input: QuestionInput) => call('/api/questions', { method: 'POST', body: JSON.stringify(input) }),
     trackQuestion: (code, token) => rpc('track', { code, token }),
@@ -81,8 +93,8 @@ export async function createApiRepository(): Promise<Repository> {
     list: (entity, opts) => rpc('admin.list', { entity, opts }),
     get: (entity, id) => rpc('admin.get', { entity, id }),
     create: (entity, data) => rpc('admin.create', { entity, data }),
-    update: (entity, id, patch, expectedVersion) => rpc('admin.update', { entity, id, patch, expectedVersion }),
-    transition: (entity, id, to, expectedVersion) => rpc('admin.transition', { entity, id, to, expectedVersion }),
+    update: (entity, id, patch, expectedVersion, reason) => rpc('admin.update', { entity, id, patch, expectedVersion, reason }),
+    transition: (entity, id, to, expectedVersion, reason) => rpc('admin.transition', { entity, id, to, expectedVersion, reason }),
     softDelete: (entity, id, expectedVersion) => rpc('admin.softDelete', { entity, id, expectedVersion }),
     restore: (entity, id, expectedVersion) => rpc('admin.restore', { entity, id, expectedVersion }),
     destroy: (entity, id) => rpc('admin.destroy', { entity, id }),
@@ -102,8 +114,15 @@ export async function createApiRepository(): Promise<Repository> {
     listQuestions: (opts) => rpc('admin.questions', { opts }),
     getQuestion: (id) => rpc('admin.question', { id }),
     updateQuestion: (id, patch, expectedVersion) => rpc('admin.updateQuestion', { id, patch, expectedVersion }),
-    transitionQuestion: (id, to, expectedVersion) => rpc('admin.transitionQuestion', { id, to, expectedVersion }),
+    transitionQuestion: (id, to, expectedVersion, reason) => rpc('admin.transitionQuestion', { id, to, expectedVersion, reason }),
     publishQuestion: (id, expectedVersion, pub) => rpc('admin.publishQuestion', { id, expectedVersion, pub }),
+    unpublishPublic: (id, expectedVersion, mode, reason) => rpc('admin.unpublishPublic', { id, expectedVersion, mode, reason }),
+    questionStats: () => rpc('admin.questionStats'),
+    listStaff: () => rpc('admin.staff'),
+    listTemplates: () => rpc('admin.templates'),
+    saveTemplate: (input) => rpc('admin.saveTemplate', input),
+    deleteTemplate: (id) => rpc('admin.deleteTemplate', { id }),
+    setEta: (days) => rpc('admin.setEta', { days }),
     listUsers: () => rpc('admin.users'),
     setRole: (userId, role: Role, grant) => rpc('admin.setRole', { userId, role, grant }),
     async inviteUser(email) {

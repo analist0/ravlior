@@ -65,7 +65,7 @@ export const MODULES: ModuleManifest[] = [
   },
   {
     id: 'responsa', version: '1.0.0', name: 'שו״ת ושאל את הרב', description: 'טופס שאלה, מעקב פרטי, תיבת שאלות ואישור הרב.',
-    dependsOn: ['library'], routes: ['/responsa', '/responsa/:slug', '/ask', '/track'],
+    dependsOn: ['library'], routes: ['/responsa', '/responsa/topic/:slug', '/responsa/cat/:slug', '/responsa/:slug', '/ask', '/track'],
     adminSections: [{ id: 'questions', label: 'שאלות' }, { id: 'public-questions', label: 'שו״ת מפורסם' }],
     navigation: [{ label: 'שו״ת', href: '/responsa' }],
     permissions: [
@@ -77,7 +77,7 @@ export const MODULES: ModuleManifest[] = [
       { key: 'acceptQuestions', label: 'קבלת שאלות חדשות', type: 'boolean', default: true },
       { key: 'voiceAnswers', label: 'תשובות קוליות', type: 'boolean', default: true },
     ],
-    migrations: CORE_SQL, featureFlag: 'module.responsa', enabledByDefault: true,
+    migrations: [...CORE_SQL, '005_public_answer.sql', '007_qa_workflow.sql', '008_qa_bank.sql'], featureFlag: 'module.responsa', enabledByDefault: true,
   },
   {
     id: 'institutions', version: '1.0.0', name: 'מוסדות ופעילות', description: 'מוסדות, קהילות וארכיון פעילות מתועדת.',

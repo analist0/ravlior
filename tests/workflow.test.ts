@@ -24,4 +24,8 @@ test('question workflow: only the rabbi approves; publishing needs consent', () 
   assert.ok(qt('approved', 'published', ['rabbi'], true));
   assert.ok(qt('approved', 'private_delivered', ['admin'], false));
   assert.ok(!qt('submitted', 'published', ['owner'], true));
+  assert.ok(qt('approved', 'answered', ['editor'], true));
+  assert.ok(qt('approved', 'assigned', ['rabbi'], false));
+  assert.ok(qt('published', 'approved', ['admin'], true));
+  assert.ok(!qt('published', 'approved', ['editor'], true));
 });

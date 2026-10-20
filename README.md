@@ -57,7 +57,7 @@ Set `VITE_DATA_MODE=api` only when the server has `DATABASE_URL` and `AUTH_SECRE
 
 ## Loading Postgres (Neon)
 
-The target database is the empty Neon project `ravlior` (id `frosty-mode-58590842`, region `aws-eu-central-1`, Postgres 18, database `ravlior`). This repository does **not** apply the SQL there. Apply it yourself, in order, on an empty database:
+Production already runs on Neon (`ravlior`, Postgres 18). This repository does **not** apply SQL. On a fresh database, apply the files below in order. On the live database, apply only `007_qa_workflow.sql` then `008_qa_bank.sql` — do not re-run the seed.
 
 1. `neon/migrations/001_schema.sql`
 2. `neon/migrations/002_workflow.sql`
@@ -65,7 +65,9 @@ The target database is the empty Neon project `ravlior` (id `frosty-mode-5859084
 4. `neon/migrations/004_search.sql`
 5. `neon/migrations/005_public_answer.sql`
 6. `neon/migrations/006_grants.sql`
-7. `neon/seed.sql`
+7. `neon/seed.sql` (fresh database only)
+8. `neon/migrations/007_qa_workflow.sql` (additive; safe on a database that already has the seed)
+9. `neon/migrations/008_qa_bank.sql`
 
 Then, optionally, `neon/verify/row_counts.sql` and `neon/verify/rls_checks.sql`. The checks run in a transaction and roll back. Every line should print `PASS`.
 
@@ -73,7 +75,7 @@ Local check (throwaway database, not Neon): `sh scripts/verify-db-local.sh`.
 
 ### First owner
 
-There is no mailer. Create the first owner once in SQL (replace the email and choose a password; the email must already be lowercase). Do not commit the password.
+Create the first owner once in SQL (replace the email and choose a password; the email must already be lowercase). Do not commit the password. Invites are still shown in the CMS and are not emailed.
 
 ```sql
 begin;
@@ -91,7 +93,9 @@ Later staff are invited from the CMS. The one-time link (`/accept?token=…`) is
 
 ### Environment
 
-Copy `.env.example` to `.env.local`. Server-only: `DATABASE_URL`, `AUTH_SECRET` (at least 16 characters), `RATE_LIMIT_SALT`, `IMPORT_URL_ALLOWLIST`. Public: `VITE_DATA_MODE=api`, `VITE_SITE_URL`, `VITE_API_BASE`. `src/app/config.ts` refuses to run if a database URL or secret is placed in a `VITE_` variable.
+Copy `.env.example` to `.env.local`. Server-only: `DATABASE_URL`, `AUTH_SECRET` (at least 16 characters), `RATE_LIMIT_SALT`, `IMPORT_URL_ALLOWLIST`. Optional and off when unset: `RESEND_API_KEY`, `MAIL_FROM`, `NOTIFY_EMAILS`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TURNSTILE_SECRET`. Public: `VITE_DATA_MODE=api`, `VITE_SITE_URL`, `VITE_API_BASE`, and optionally `VITE_TURNSTILE_SITE_KEY`. `src/app/config.ts` refuses to run if a database URL or secret is placed in a `VITE_` variable.
+
+Question rate limits use `hit_rate_limit` in Postgres. When an answer is delivered, the asker can receive an email that contains only a private link (`RESEND_API_KEY` + `MAIL_FROM`). Staff can be notified of a new question or an answer waiting for the rabbi (`NOTIFY_EMAILS`, and optionally Telegram). None of these send anything when the variables are unset.
 
 Sessions are an httpOnly cookie (`or_session`). Authorization is `SET LOCAL ROLE app_anon` or `app_api` plus `app.user_id`, so anonymous visitors see published rows only. The table owner is used only for login, invites, question intake, rate limits, and assembling uploads.
 

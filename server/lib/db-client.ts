@@ -1,6 +1,7 @@
 // Privileged database calls for endpoints that must bypass visitor RLS:
 // question intake, rate limits, token checks, and session lookup.
-import { sha256Hex, newToken } from '../../src/shared/questions.ts';
+import { sha256Hex, newToken, newTrackingCode } from '../../src/shared/questions.ts';
+import { checkUpload, storagePath } from '../../src/shared/upload-policy.ts';
 import { asOwner, asService, ApiError } from '../db.ts';
 import { signMedia } from '../media-sign.ts';
 import { UpstreamError, type DataClient } from './data-client.ts';
@@ -30,9 +31,9 @@ export function dbClient(env: ServerEnv): DataClient {
     },
     async questionByCode(code) {
       return asOwner((sql) => sql(
-        `select token_hash, answer_audio_path, status, approved_by from public.question_submissions where tracking_code = $1`,
+        `select token_hash, notify_token_hash, answer_audio_path, status, approved_by from public.question_submissions where tracking_code = $1`,
         [code],
-      )) as Promise<{ token_hash: string; answer_audio_path: string | null; status: string; approved_by: string | null }[]>;
+      )) as Promise<{ token_hash: string; notify_token_hash: string | null; answer_audio_path: string | null; status: string; approved_by: string | null }[]>;
     },
     async signPrivate(bucket, path, expiresIn) {
       const exp = Math.floor(Date.now() / 1000) + expiresIn;
@@ -72,6 +73,66 @@ export function dbClient(env: ServerEnv): DataClient {
       ));
       const exp = rows[0]?.expires_at;
       return { token, expiresAt: exp instanceof Date ? exp.toISOString() : String(exp ?? '') };
+    },
+    async followUp(code, token, questionText) {
+      const given = await sha256Hex(token);
+      const fresh = newToken();
+      const freshHash = await sha256Hex(fresh);
+      const text = questionText.trim();
+      if (text.length < 10 || text.length > 4000) throw new ApiError(422, 'נא לכתוב שאלת המשך של 10 עד 4000 תווים.');
+      let tracking = '';
+      await asOwner(async (sql) => {
+        const parent = await sql(
+          `select id, status, approved_by, contact_email, topic_id, is_anonymous, asker_name
+           from public.question_submissions
+           where tracking_code = $1 and (token_hash = $2 or notify_token_hash = $2)`,
+          [code.toUpperCase(), given],
+        );
+        const row = parent[0];
+        if (!row?.approved_by || !['private_delivered', 'published', 'closed'].includes(String(row.status))) {
+          throw new ApiError(404, 'לא נמצאה תשובה שאפשר להמשיך.');
+        }
+        for (let i = 0; i < 3; i++) {
+          tracking = newTrackingCode();
+          try {
+            await sql(
+              `insert into public.question_submissions
+                (tracking_code, token_hash, is_anonymous, asker_name, contact_email, topic_id, question_text, publish_consent, parent_id)
+               values ($1,$2,$3,$4,$5,$6,$7,false,$8)`,
+              [tracking, freshHash, row.is_anonymous, row.asker_name, row.contact_email, row.topic_id, text, row.id],
+            );
+            return;
+          } catch (e) {
+            if (e instanceof ApiError && e.code === '23505') continue;
+            throw e;
+          }
+        }
+        throw new ApiError(500, 'לא ניתן היה ליצור מספר מעקב.');
+      });
+      return { trackingCode: tracking, token: fresh };
+    },
+    async attachVoice(code, token, bytes, mimeHint) {
+      const given = await sha256Hex(token);
+      const name = /webm/i.test(mimeHint) ? 'question.webm' : 'question.mp3';
+      const check = checkUpload('private-submissions', { name, size: bytes.byteLength, type: '' }, bytes.slice(0, 16));
+      if (!check.ok) throw new ApiError(422, check.error ?? 'סוג הקובץ לא מותר');
+      const path = storagePath(name, crypto.randomUUID());
+      await asOwner(async (sql) => {
+        const rows = await sql(
+          `select id, status from public.question_submissions
+           where tracking_code = $1 and (token_hash = $2 or notify_token_hash = $2)`,
+          [code.toUpperCase(), given],
+        );
+        const row = rows[0];
+        if (!row || !['submitted', 'triaged', 'assigned'].includes(String(row.status))) {
+          throw new ApiError(404, 'לא ניתן לצרף הקלטה לשאלה הזו.');
+        }
+        await sql(
+          `insert into public.storage_objects (bucket_id, name, mime, bytes, size) values ('private-submissions', $1, $2, $3, $4)`,
+          [path, check.mime, Buffer.from(bytes), bytes.byteLength],
+        );
+        await sql(`update public.question_submissions set voice_question_path = $1, version = version where id = $2`, [path, row.id]);
+      });
     },
   };
 }

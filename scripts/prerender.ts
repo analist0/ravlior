@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ContentItem, Page, SeedData, Series, Topic } from '../src/shared/types.ts';
+import type { ContentItem, Page, PublicQuestion, SeedData, Series, Topic } from '../src/shared/types.ts';
 import { DEFAULT_PAGES } from '../src/shared/defaults.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -21,7 +21,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const split = (t: string) => { const i = t.indexOf(' / '); return i > 0 ? [t.slice(0, i).trim(), t.slice(i + 3).trim()] : [t.trim(), '']; };
 const TYPE: Record<string, string> = { video: 'וידאו', audio: 'אודיו', short: 'קצר', live: 'שידור מוקלט', book: 'ספר', leaflet: 'עלון', article: 'דבר תורה', answer: 'תשובה' };
 
-async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; series: Series[]; pages: Omit<Page, 'id'>[]; source: string }> {
+async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; series: Series[]; pages: Omit<Page, 'id'>[]; questions: PublicQuestion[]; source: string }> {
   if (process.env.DATABASE_URL) {
     const { withActor } = await import('../server/db.ts');
     const { loadPrerender } = await import('../server/store.ts');
@@ -29,7 +29,7 @@ async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; se
     return { ...data, source: 'database' };
   }
   const seed: SeedData = JSON.parse(readFileSync(resolve(root, 'src/data/seed.json'), 'utf8'));
-  return { content: seed.content.filter((c) => c.status === 'published' && !c.deletedAt), topics: seed.topics, series: seed.series, pages: DEFAULT_PAGES, source: 'seed' };
+  return { content: seed.content.filter((c) => c.status === 'published' && !c.deletedAt), topics: seed.topics, series: seed.series, pages: DEFAULT_PAGES, questions: [], source: 'seed' };
 }
 
 interface Out { path: string; title: string; description: string; body: string; image?: string | null; type?: string; jsonLd?: unknown }
@@ -87,6 +87,32 @@ outs.push({ path: '/sources', title: 'מקורות', description: 'הארכיו�
 for (const p of data.pages) {
   const text = p.blocks.map((b) => ('text' in b ? `<p>${esc(b.text)}</p>` : '')).join('');
   outs.push({ path: p.slug === 'about' ? '/about' : `/p/${p.slug}`, title: p.title, description: p.description ?? p.title, body: `<h1>${esc(p.title)}</h1>${text}` });
+}
+for (const q of data.questions) {
+  const answer = q.answerBlocks.map((b) => ('text' in b ? b.text.trim() : '')).filter(Boolean).join(' ');
+  const canonical = SITE ? `${SITE}${encodeURI(`/responsa/${q.slug}`)}` : '';
+  outs.push({
+    path: `/responsa/${q.slug}`,
+    title: q.questionText.slice(0, 70),
+    description: q.questionText.slice(0, 160),
+    body: `<article><h1>${esc(q.questionText)}</h1>${answer ? `<h2>תשובה</h2><p>${esc(answer)}</p>` : ''}${q.sources ? `<h2>מראי מקומות</h2><p>${esc(q.sources)}</p>` : ''}<p>${esc(q.attribution)}</p></article>`,
+    jsonLd: answer ? {
+      '@context': 'https://schema.org',
+      '@type': 'QAPage',
+      mainEntity: {
+        '@type': 'Question',
+        name: q.questionText,
+        ...(q.publishedAt ? { dateCreated: q.publishedAt } : {}),
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: answer,
+          ...(q.attribution ? { author: { '@type': 'Person', name: q.attribution } } : {}),
+          ...(q.publishedAt ? { datePublished: q.publishedAt } : {}),
+          ...(canonical ? { url: canonical } : {}),
+        },
+      },
+    } : undefined,
+  });
 }
 for (const c of data.content) {
   const [main, sub] = split(c.title);

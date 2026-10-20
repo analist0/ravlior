@@ -48,13 +48,24 @@ export function questionTransitionAllowed(from: QuestionStatus, to: QuestionStat
     case 'answered>assigned': return any(roles, ['owner', 'admin', 'editor', 'reviewer', 'rabbi']);
     // Only the rabbi role approves an answer given in his name.
     case 'answered>approved': return roles.includes('rabbi');
+    case 'approved>answered':
+    case 'approved>assigned':
+      return any(roles, ['owner', 'admin', 'editor', 'reviewer', 'rabbi']);
     case 'approved>published': return consent && any(roles, ['owner', 'admin', 'rabbi']);
     case 'approved>private_delivered': return any(roles, ['owner', 'admin', 'rabbi']);
+    case 'published>approved': return any(roles, ['owner', 'admin', 'rabbi']);
     case 'published>closed':
     case 'private_delivered>closed':
       return any(roles, ['owner', 'admin', 'rabbi']);
     default: return false;
   }
+}
+
+/** Staff must record why they send an approved answer back, or unpublish it. */
+export function questionTransitionNeedsReason(from: QuestionStatus, to: QuestionStatus): boolean {
+  if (from === 'approved' && (to === 'answered' || to === 'assigned')) return true;
+  if (from === 'published' && to === 'approved') return true;
+  return false;
 }
 
 export function nextQuestionStatuses(from: QuestionStatus, roles: Role[], consent: boolean): QuestionStatus[] {

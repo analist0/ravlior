@@ -18,7 +18,11 @@ const WIDTHS: [number, string][] = [[360, 'טלפון'], [768, 'טאבלט'], [1
 
 function RefSelect({ f, value, onChange }: { f: FieldDef; value: string | null; onChange: (v: string | null) => void }) {
   const repo = useRepo();
-  const opts = useAsync(async () => (f.type === 'ref-institution' ? (await repo.listInstitutions()).map((i) => [i.id, i.name]) : (await repo.listTopics()).map((t) => [t.id, t.name])), [f.type]);
+  const opts = useAsync(async () => {
+    if (f.type === 'ref-institution') return (await repo.listInstitutions()).map((i) => [i.id, i.name] as [string, string]);
+    if (f.type === 'ref-category') return (await repo.listCategories()).map((c) => [c.id, c.name] as [string, string]);
+    return (await repo.listTopics()).map((t) => [t.id, t.name] as [string, string]);
+  }, [f.type]);
   return (
     <SelectField label={f.label} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
       <option value="">—</option>
@@ -41,6 +45,7 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [preview, setPreview] = useState<number | null>(null);
+  const [reason, setReason] = useState('');
 
   useEffect(() => {
     if (id && rec.data) setDraft({ ...(rec.data as unknown as Record<string, unknown>) });
@@ -73,7 +78,7 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
         setDirty(false);
         navigate(`/admin/${cfg.route}/${created.id}`, { replace: true });
       } else {
-        await repo.admin.update(entity, id, draft as Partial<EntityRecord>, current!.version);
+        await repo.admin.update(entity, id, draft as Partial<EntityRecord>, current!.version, reason || undefined);
         toast('נשמר');
         setDirty(false);
         rec.reload();
@@ -89,7 +94,12 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
     if (dirty && !(await confirm({ title: 'יש שינויים שלא נשמרו', body: 'שינוי הסטטוס לא ישמור את השינויים בטופס. להמשיך?', confirmLabel: 'המשך בלי לשמור' }))) return;
     setBusy(true); setSaveError(null);
     try {
-      await repo.admin.transition(entity, id!, to, current!.version);
+      if (entity === 'publicQuestions' && current?.status === 'published' && to === 'draft' && !reason.trim()) {
+        setSaveError({ message: 'נדרשת סיבה ליומן כדי להסיר פרסום.', conflict: false });
+        setBusy(false);
+        return;
+      }
+      await repo.admin.transition(entity, id!, to, current!.version, reason || undefined);
       toast(`הסטטוס עודכן: ${CONTENT_STATUS_LABEL[to]}`);
       rec.reload();
     } catch (e) {
@@ -135,7 +145,8 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
       case 'checkbox': return <div {...common}><Checkbox label={f.label} checked={!!val} disabled={readOnly} onChange={(e) => set(f.key, e.target.checked)} /></div>;
       case 'select': return <div {...common}><SelectField label={f.label} value={(val as string) ?? ''} hint={f.hint} error={errors[f.key]} disabled={readOnly} onChange={(e) => set(f.key, e.target.value)}>{f.options!.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</SelectField></div>;
       case 'urls': return <div className="full" {...common}><UrlsField label={f.label} value={(val as string[]) ?? []} error={errors[f.key]} onChange={(v) => set(f.key, v)} /></div>;
-      case 'ref-institution': case 'ref-topic': return <div {...common}><RefSelect f={f} value={(val as string) ?? null} onChange={(v) => set(f.key, v)} /></div>;
+      case 'csv': return <div className="full" {...common}><TextField label={f.label} hint={f.hint} value={Array.isArray(val) ? (val as string[]).join(', ') : ''} readOnly={readOnly} onChange={(e) => set(f.key, e.target.value.split(/[,،]/).map((s) => s.trim()).filter(Boolean).slice(0, 12))} /></div>;
+      case 'ref-institution': case 'ref-topic': case 'ref-category': return <div {...common}><RefSelect f={f} value={(val as string) ?? null} onChange={(v) => set(f.key, v)} /></div>;
       case 'blocks': return (
         <div className="full" {...common}>
           <span className="field-label">{f.label}</span>
@@ -164,6 +175,9 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
         <div className="stack">
           <form className="panel form-grid two" onSubmit={(e) => { e.preventDefault(); void save(); }} aria-label={`עריכת ${cfg.singular}`}>
             {cfg.fields.map(renderField)}
+            {entity === 'publicQuestions' && current?.status === 'published' && (
+              <TextField label="סיבה ליומן" value={reason} onChange={(e) => setReason(e.target.value)} hint="נדרשת אם משנים את נוסח השאלה או התשובה שפורסמה, או אם מסירים את הפרסום." />
+            )}
           </form>
           {entity === 'content' && content && (
             <>

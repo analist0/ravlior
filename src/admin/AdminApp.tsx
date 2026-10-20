@@ -82,7 +82,7 @@ function Login({ onDone }: { onDone: (s: Session) => void }) {
         <div className="row" style={{ marginBottom: 'var(--s-5)' }}><BrandMark /><h1 style={{ margin: 0, fontSize: 'var(--step-2)' }}>כניסת צוות</h1></div>
         {repo.mode === 'demo' ? (
           <>
-            <Notice tone="warn" icon="alert">מצב הדגמה: אין חיבור ל-Supabase Auth. בחרו תפקיד כדי לסייר בממשק. השינויים נשמרים בדפדפן זה בלבד.</Notice>
+            <Notice tone="warn" icon="alert">מצב הדגמה: אין חיבור למסד הנתונים. בחרו תפקיד כדי לסייר בממשק. השינויים נשמרים בדפדפן זה בלבד.</Notice>
             <div className="admin-cards" style={{ marginTop: 'var(--s-4)' }}>
               {(['owner', 'admin', 'editor', 'reviewer', 'rabbi', 'viewer'] as Role[]).map((r) => (
                 <Button key={r} variant="secondary" onClick={() => void repo.demoSignIn!(r).then(onDone)}>{ROLE_LABEL[r]}</Button>

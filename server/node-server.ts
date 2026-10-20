@@ -10,6 +10,7 @@ const deps = defaultDeps();
 function bodyCap(url: string): number {
   const path = url.split('?')[0] ?? '';
   if (path.startsWith('/api/media')) return 3 * 1024 * 1024;
+  if (path === '/api/questions/voice-in') return 4 * 1024 * 1024;
   return 1200 * 1024;
 }
 

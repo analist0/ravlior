@@ -9,11 +9,12 @@ import { previewRows } from '../shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
+import { applyAnswerEdit, applyPublicEdit, buildPublicFromApproved } from '../shared/responsa.ts';
 import { slugify } from '../shared/hebrew.ts';
 import { validateArchive } from '../shared/archives.ts';
 import { storagePath, BUCKETS, type BucketId } from '../shared/upload-policy.ts';
 import {
-  contentTransitionAllowed, canEdit, canReview, isAdmin, isStaff, questionTransitionAllowed, PermissionError, VersionConflictError,
+  contentTransitionAllowed, canEdit, canReview, isAdmin, isStaff, questionTransitionAllowed, questionTransitionNeedsReason, PermissionError, VersionConflictError,
 } from '../shared/workflow.ts';
 import { defaultModuleState, MODULES } from '../modules/manifest.ts';
 import type {
@@ -44,7 +45,20 @@ interface DemoDB {
   revisions: (Revision & { entity: string; entityId: string })[];
   audit: AuditEntry[];
   users: StaffUser[];
+  templates?: { id: string; title: string; body: string }[];
+  etaDays?: number;
 }
+
+const dbCategories = [
+  { id: 'c1000000-0000-4000-a000-000000000001', slug: 'orach-chaim', name: 'אורח חיים' },
+  { id: 'c1000000-0000-4000-a000-000000000002', slug: 'yoreh-deah', name: 'יורה דעה' },
+  { id: 'c1000000-0000-4000-a000-000000000003', slug: 'even-haezer', name: 'אבן העזר' },
+  { id: 'c1000000-0000-4000-a000-000000000004', slug: 'choshen-mishpat', name: 'חושן משפט' },
+  { id: 'c1000000-0000-4000-a000-000000000005', slug: 'emunah', name: 'אמונה ומחשבה' },
+  { id: 'c1000000-0000-4000-a000-000000000006', slug: 'moadim', name: 'מועדים' },
+  { id: 'c1000000-0000-4000-a000-000000000007', slug: 'tefillah', name: 'תפילה' },
+  { id: 'c1000000-0000-4000-a000-000000000008', slug: 'klali', name: 'כללי' },
+];
 
 const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -159,12 +173,42 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     },
     async getMenus() { return clone(db.menus); },
     async getHomeSections() { return clone([...db.home].sort((a, b) => a.position - b.position)); },
+    async searchResponsa(opts) {
+      const page = opts.page ?? 1;
+      let rows = db.publicQuestions.filter((p) => p.status === 'published' && !p.deletedAt && !p.hidden);
+      if (opts.topic) rows = rows.filter((p) => db.topics.find((t) => t.id === p.topicId)?.slug === opts.topic);
+      if (opts.category) rows = rows.filter((p) => p.categoryId === opts.category || dbCategories.find((c) => c.id === p.categoryId)?.slug === opts.category);
+      if (opts.q) rows = rows.filter((p) => heMatches([p.questionText, p.sources ?? '', ...(p.tags ?? [])].join(' '), opts.q!));
+      return clone({ items: rows.slice((page - 1) * 20, page * 20), total: rows.length, page, pageSize: 20 });
+    },
+    async suggestQuestions(q) {
+      if (q.trim().length < 2) return [];
+      return db.publicQuestions.filter((p) => p.status === 'published' && !p.deletedAt && !p.hidden && heMatches(p.questionText, q)).slice(0, 5).map((p) => ({ slug: p.slug, questionText: p.questionText }));
+    },
+    async listCategories() { return clone(dbCategories); },
+    async weekQuestion() { return clone(db.publicQuestions.find((p) => p.weekPick && p.status === 'published' && !p.deletedAt && !p.hidden) ?? null); },
+    async etaDays() { return db.etaDays ?? 14; },
+    async followUp(code, token, questionText) {
+      const parent = await this.trackQuestion(code, token);
+      if (!parent || !['private_delivered', 'published', 'closed'].includes(parent.status)) throw new PermissionError('לא נמצאה תשובה שאפשר להמשיך.');
+      const v = validateQuestion({ questionText, isAnonymous: true, publishConsent: false, website: '', startedAt: Date.now() - 5000 });
+      if (!v.ok) throw new Error(Object.values(v.errors)[0] ?? 'השאלה אינה תקינה');
+      const src = db.questions.find((q) => q.trackingCode === parent.trackingCode);
+      const created = await this.submitQuestion({ ...v.value, topicId: src?.topicId ?? null, contactEmail: src?.contactEmail ?? null, isAnonymous: src?.isAnonymous ?? true, askerName: src?.askerName ?? null });
+      const child = db.questions.find((q) => q.trackingCode === created.trackingCode);
+      if (child && src) child.parentId = src.id;
+      persist();
+      return created;
+    },
+    async submitVoice() { return; },
     async listPublicQuestions(q) {
-      return clone(pub(db.publicQuestions).filter((p) => !q || heMatches(p.questionText, q)));
+      return clone(pub(db.publicQuestions).filter((p) => !p.hidden && (!q || heMatches(p.questionText, q))));
     },
     async getPublicQuestion(slug) {
-      const p = db.publicQuestions.find((x) => x.slug === slug && isPublic(x));
-      return p ? clone(p) : null;
+      const p = db.publicQuestions.find((x) => x.slug === slug && isPublic(x) && !x.hidden);
+      if (!p) return null;
+      const related = db.publicQuestions.filter((x) => x.id !== p.id && !!p.topicId && x.topicId === p.topicId && isPublic(x) && !x.hidden).slice(0, 4);
+      return clone({ ...p, related });
     },
     async getModules() { return clone(db.modules); },
 
@@ -309,7 +353,7 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       persist();
       return clone(rec);
     },
-    async update(entity, id, patch, expectedVersion) {
+    async update(entity, id, patch, expectedVersion, reason) {
       await delay(120);
       if (!canEdit(roles()) && !canReview(roles())) throw new PermissionError();
       const rec = find(entity, id);
@@ -319,6 +363,11 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       void _v; void _i;
       if (status !== undefined && status !== (rec as { status: string }).status) throw new Error('שינוי סטטוס נעשה דרך פעולות תהליך העבודה');
       if ('slug' in rest && table(entity).some((r) => r.id !== id && 'slug' in r && r.slug === rest.slug)) throw new Error('הכתובת (slug) כבר קיימת.');
+      if (entity === 'publicQuestions') {
+        const next = applyPublicEdit(rec as PublicQuestion, { questionText: rest.questionText as string | undefined, answerBlocks: rest.answerBlocks as PublicQuestion['answerBlocks'] }, reason);
+        (rec as PublicQuestion).status = next.status;
+        (rec as PublicQuestion).approvedByRabbi = next.approvedByRabbi;
+      }
       bump(entity, rec);
       Object.assign(rec, rest);
       if (entity === 'content' && 'durationText' in rest) (rec as ContentItem).durationSeconds = parseDuration(rest.durationText as string);
@@ -326,13 +375,14 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       persist();
       return clone(rec);
     },
-    async transition(entity, id, to, expectedVersion) {
+    async transition(entity, id, to, expectedVersion, reason) {
       await delay(120);
       const rec = find(entity, id) as (EntityRecord & { status: ContentStatus }) | undefined;
       if (!rec) throw new Error('הרשומה לא נמצאה');
       checkVersion(rec, expectedVersion);
       if (!contentTransitionAllowed(rec.status, to, roles())) throw new PermissionError(`מעבר ${rec.status} ← ${to} אינו מותר לתפקיד שלך`);
       if (entity === 'publicQuestions' && to === 'published' && !(rec as PublicQuestion).approvedByRabbi) throw new PermissionError('תשובה מתפרסמת רק לאחר אישור הרב');
+      if (entity === 'publicQuestions' && rec.status === 'published' && to === 'draft' && !reason?.trim()) throw new PermissionError('נדרשת סיבה ליומן כדי להסיר פרסום.');
       const from = rec.status;
       bump(entity, rec);
       rec.status = to;
@@ -516,6 +566,8 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       rows = [...rows].sort((a, b) => {
         if (sort === 'status') return a.status.localeCompare(b.status) || b.createdAt.localeCompare(a.createdAt);
         if (sort === 'code') return a.trackingCode.localeCompare(b.trackingCode);
+        if (sort === 'oldest') return a.createdAt.localeCompare(b.createdAt);
+        if (sort === 'priority') return (b.priority ?? 1) - (a.priority ?? 1) || a.createdAt.localeCompare(b.createdAt);
         return b.createdAt.localeCompare(a.createdAt);
       });
       return clone({ items: rows.slice((page - 1) * 25, page * 25), total: rows.length, page, pageSize: 25 });
@@ -530,7 +582,12 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       const q = db.questions.find((x) => x.id === id);
       if (!q) throw new Error('השאלה לא נמצאה');
       checkVersion(q, expectedVersion);
-      const allowed: (keyof QuestionSubmission)[] = ['answerText', 'answerAudioPath', 'assignedTo', 'topicId'];
+      const edited = applyAnswerEdit(q, patch);
+      q.status = edited.status;
+      q.approvedBy = edited.approvedBy;
+      q.answerText = edited.answerText;
+      q.answerAudioPath = edited.answerAudioPath;
+      const allowed: (keyof QuestionSubmission)[] = ['assignedTo', 'topicId', 'priority', 'dueAt', 'answerSources', 'answerKind'];
       for (const k of allowed) if (k in patch) (q as unknown as Record<string, unknown>)[k] = patch[k];
       q.version += 1;
       q.updatedAt = now();
@@ -538,10 +595,11 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       persist();
       return clone(q);
     },
-    async transitionQuestion(id, to, expectedVersion) {
+    async transitionQuestion(id, to, expectedVersion, reason) {
       const q = db.questions.find((x) => x.id === id);
       if (!q) throw new Error('השאלה לא נמצאה');
       checkVersion(q, expectedVersion);
+      if (questionTransitionNeedsReason(q.status, to) && !reason?.trim()) throw new PermissionError('נדרשת סיבה ליומן עבור המעבר הזה.');
       if (!questionTransitionAllowed(q.status, to, roles(), q.publishConsent)) {
         throw new PermissionError(to === 'approved' ? 'רק הרב מאשר תשובה הניתנת בשמו.' : to === 'published' && !q.publishConsent ? 'השואל לא הסכים לפרסום.' : 'המעבר אינו מותר לתפקיד שלך.');
       }
@@ -549,6 +607,7 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       q.status = to;
       if (to === 'answered') q.answeredBy = actor();
       if (to === 'approved') q.approvedBy = actor();
+      if (from === 'approved' && (to === 'answered' || to === 'assigned')) q.approvedBy = null;
       q.version += 1;
       q.updatedAt = now();
       log('update', 'question_submissions', q.id, { from, to });
@@ -558,21 +617,78 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     async publishQuestion(id, expectedVersion, p) {
       const q = db.questions.find((x) => x.id === id);
       if (!q) throw new Error('השאלה לא נמצאה');
-      if (q.status !== 'approved' || !q.approvedBy) throw new PermissionError('פרסום אפשרי רק אחרי אישור הרב.');
-      if (!q.publishConsent) throw new PermissionError('השואל לא הסכים לפרסום.');
+      const built = buildPublicFromApproved(q, p.questionText);
       checkVersion(q, expectedVersion);
-      if (!questionTransitionAllowed('approved', 'published', roles(), true)) throw new PermissionError();
+      if (!built.needsReapproval && !questionTransitionAllowed('approved', 'published', roles(), true)) throw new PermissionError();
       const pq: PublicQuestion = {
         id: uid(), slug: `${slugify(p.questionText).slice(0, 40)}-${q.trackingCode.slice(0, 4).toLowerCase()}`, questionText: p.questionText,
-        answerBlocks: p.answerBlocks, answerAudioUrl: null, topicId: p.topicId, attribution: p.attribution, approvedByRabbi: true,
-        publishedAt: now(), status: 'published', version: 1, deletedAt: null,
+        answerBlocks: built.blocks, answerAudioUrl: q.answerAudioPath ? `blob:public/${q.answerAudioPath}` : null, topicId: p.topicId, attribution: p.attribution,
+        approvedByRabbi: built.approvedByRabbi, publishedAt: built.approvedByRabbi ? now() : null, status: built.approvedByRabbi ? 'published' : 'in_review', version: 1, deletedAt: null,
+        sources: q.answerSources ?? null, answerKind: (p.answerKind as PublicQuestion['answerKind']) ?? q.answerKind ?? 'written', categoryId: p.categoryId ?? null,
       };
       db.publicQuestions.unshift(pq);
-      q.publicQuestionId = pq.id;
-      q.status = 'published';
-      q.version += 1;
+      if (built.approvedByRabbi) {
+        q.publicQuestionId = pq.id;
+        q.status = 'published';
+        q.version += 1;
+      }
       log('insert', 'public_questions', pq.id);
       persist();
+      return { published: built.approvedByRabbi, needsReapproval: built.needsReapproval, id: pq.id };
+    },
+    async unpublishPublic(id, expectedVersion, mode, reason) {
+      if (!reason.trim()) throw new PermissionError('נדרשת סיבה ליומן כדי להסיר פרסום.');
+      const pq = db.publicQuestions.find((x) => x.id === id);
+      if (!pq) throw new Error('השו״ת לא נמצא');
+      checkVersion(pq, expectedVersion);
+      if (mode === 'hidden') pq.hidden = true;
+      else {
+        if (!contentTransitionAllowed(pq.status, 'draft', roles())) throw new PermissionError();
+        pq.status = 'draft';
+        pq.approvedByRabbi = false;
+      }
+      pq.version += 1;
+      persist();
+    },
+    async questionStats() {
+      const open = db.questions.filter((q) => !['published', 'private_delivered', 'closed'].includes(q.status));
+      const answered = db.questions.filter((q) => q.answeredAt || q.approvedBy);
+      const days = answered.map((q) => (new Date(q.answeredAt ?? q.updatedAt).getTime() - new Date(q.createdAt).getTime()) / 86400000).filter((n) => n >= 0);
+      const by = new Map<string | null, number>();
+      for (const q of db.questions) by.set(q.topicId, (by.get(q.topicId) ?? 0) + 1);
+      return {
+        pendingRabbi: db.questions.filter((q) => q.status === 'answered').length,
+        open: open.length,
+        overdue: open.filter((q) => q.dueAt && new Date(q.dueAt).getTime() < Date.now()).length,
+        avgResponseDays: days.length ? Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10 : null,
+        byTopic: [...by].map(([topicId, count]) => ({ topicId, count })),
+      };
+    },
+    async listStaff() {
+      return db.users.filter((u) => u.roles.some((r) => r !== 'viewer')).map((u) => ({ id: u.userId, displayName: u.displayName ?? u.email }));
+    },
+    async listTemplates() { db.templates ??= []; return clone(db.templates); },
+    async saveTemplate(input) {
+      if (!canEdit(roles()) && !roles().includes('rabbi')) throw new PermissionError();
+      db.templates ??= [];
+      const row = input.id ? db.templates.find((t) => t.id === input.id) : undefined;
+      if (row) { row.title = input.title; row.body = input.body; persist(); return clone(row); }
+      const created = { id: uid(), title: input.title, body: input.body };
+      db.templates.unshift(created);
+      persist();
+      return created;
+    },
+    async deleteTemplate(id) {
+      db.templates ??= [];
+      const i = db.templates.findIndex((t) => t.id === id);
+      if (i >= 0) db.templates.splice(i, 1);
+      persist();
+    },
+    async setEta(days) {
+      if (!isAdmin(roles())) throw new PermissionError();
+      db.etaDays = days;
+      persist();
+      return days;
     },
 
     async listUsers() {

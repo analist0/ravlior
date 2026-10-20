@@ -202,6 +202,13 @@ export interface PublicQuestion {
   status: ContentStatus;
   version: number;
   deletedAt: string | null;
+  sources?: string | null;
+  answerKind?: 'written' | 'oral' | 'both';
+  hidden?: boolean;
+  weekPick?: boolean;
+  categoryId?: string | null;
+  tags?: string[];
+  related?: PublicQuestion[];
 }
 
 export interface QuestionSubmission {
@@ -218,8 +225,15 @@ export interface QuestionSubmission {
   assignedTo: string | null;
   answerText: string | null;
   answerAudioPath: string | null;
+  answerSources?: string | null;
+  answerKind?: 'written' | 'oral' | 'both';
+  priority?: number;
+  dueAt?: string | null;
+  parentId?: string | null;
+  voiceQuestionPath?: string | null;
   answeredBy: string | null;
   approvedBy: string | null;
+  answeredAt?: string | null;
   publicQuestionId: string | null;
   createdAt: string;
   updatedAt: string;

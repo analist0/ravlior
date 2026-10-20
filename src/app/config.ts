@@ -4,6 +4,8 @@ const env = import.meta.env;
 
 export const SITE_URL: string = ((env.VITE_SITE_URL as string | undefined) ?? '').replace(/\/$/, '');
 export const API_BASE: string = ((env.VITE_API_BASE as string | undefined) ?? '').replace(/\/$/, '');
+/** Public Turnstile site key. Empty disables the widget. The secret stays on the server. */
+export const TURNSTILE_SITE_KEY: string = (env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? '';
 
 for (const [key, value] of Object.entries(env)) {
   if (!key.startsWith('VITE_')) continue;

@@ -179,11 +179,29 @@ export function Pagination({ page, total, pageSize, hrefFor }: { page: number; t
   );
 }
 
+function dateOf(iso: string): Date | null {
+  const d = new Date(iso.length === 10 ? iso + 'T12:00:00Z' : iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function formatHebDate(iso: string | null | undefined): string {
   if (!iso) return '';
-  const d = new Date(iso.length === 10 ? iso + 'T12:00:00Z' : iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+  const d = dateOf(iso);
+  return d ? new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }).format(d) : '';
+}
+
+/** Hebrew calendar date (e.g. ג׳ בתשרי ה׳תשפ״ז). */
+export function formatHebrewCalendar(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = dateOf(iso);
+  return d ? new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { day: 'numeric', month: 'long', year: 'numeric' }).format(d) : '';
+}
+
+/** Explicit Gregorian date in Hebrew locale. */
+export function formatGregorian(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = dateOf(iso);
+  return d ? new Intl.DateTimeFormat('he-IL-u-ca-gregory', { day: 'numeric', month: 'long', year: 'numeric' }).format(d) : '';
 }
 
 /** Splits "Main title / subtitle" as used on the channel. Titles are stored verbatim. */

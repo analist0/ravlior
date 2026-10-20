@@ -1,12 +1,16 @@
 // Repository operations executed under RLS (withActor). Column names are whitelisted.
 import { validateArchive } from '../src/shared/archives.ts';
 import { slugify } from '../src/shared/hebrew.ts';
+import { newToken, sha256Hex } from '../src/shared/questions.ts';
+import { buildPublicFromApproved } from '../src/shared/responsa.ts';
+import { questionTransitionNeedsReason } from '../src/shared/workflow.ts';
+import { notifyAnswerReady, notifyStaff } from './mailer.ts';
 import { previewRows } from '../src/shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../src/shared/media.ts';
 import { relatedItems } from '../src/shared/query.ts';
 import type {
   ContentItem, ContentQuery, EventRecord, HomeSection, Institution, MediaSource, Menu, ModuleState, Page,
-  PublicQuestion, QuestionSubmission, Series, SourceArchive, Topic,
+  PublicQuestion, QuestionStatus, QuestionSubmission, Series, SourceArchive, Topic,
 } from '../src/shared/types.ts';
 import type { ArchiveInput, EntityName, EntityRecord, ImportRow, ListOptions, MediaCatalogRow } from '../src/data/repo.ts';
 import { ApiError, asOwner, withActor, type Row, type Sql } from './db.ts';
@@ -29,7 +33,7 @@ const WRITABLE: Record<EntityName, string[]> = {
   pages: ['slug', 'title', 'description', 'blocks', 'status'],
   institutions: ['slug', 'name', 'description', 'source_urls', 'status'],
   events: ['slug', 'institution_id', 'title', 'event_date', 'date_text', 'summary', 'source_urls', 'status'],
-  publicQuestions: ['slug', 'question_text', 'answer_blocks', 'answer_audio_url', 'topic_id', 'attribution', 'approved_by_rabbi', 'status', 'source_submission_id'],
+  publicQuestions: ['slug', 'question_text', 'answer_blocks', 'answer_audio_url', 'topic_id', 'attribution', 'approved_by_rabbi', 'status', 'source_submission_id', 'sources', 'answer_kind', 'category_id', 'week_pick'],
 };
 const TITLE_COL: Record<EntityName, string> = {
   content: 'title', topics: 'name', series: 'title', pages: 'title', institutions: 'name', events: 'title', publicQuestions: 'question_text',
@@ -108,7 +112,21 @@ async function getOne(sql: Sql, entity: EntityName, id: string): Promise<EntityR
     return { ...fromRow<Series>(row), items: items.map((i) => String(i.content_id)) };
   }
   const rows = await sql(`select * from public.${TABLE[entity]} where id = $1`, [id]);
-  return rows[0] ? fromRow<EntityRecord>(rows[0]) : null;
+  if (!rows[0]) return null;
+  const rec = fromRow<EntityRecord>(rows[0]);
+  if (entity !== 'publicQuestions') return rec;
+  const tags = await sql(`select tag from public.public_question_tags where question_id = $1 order by tag`, [id]);
+  return { ...rec, tags: tags.map((t) => String(t.tag)) };
+}
+
+function quiet(p: Promise<unknown>): void {
+  void p.catch((e) => console.error('[notify] failed:', e instanceof Error ? e.message.slice(0, 120) : 'unknown'));
+}
+
+async function replaceTags(sql: Sql, id: string, tags: unknown): Promise<void> {
+  const list = (Array.isArray(tags) ? tags : []).map((t) => String(t).trim()).filter((t) => t.length >= 1 && t.length <= 40).slice(0, 12);
+  await sql(`delete from public.public_question_tags where question_id = $1`, [id]);
+  for (const tag of list) await sql(`insert into public.public_question_tags (question_id, tag) values ($1, $2) on conflict do nothing`, [id, tag]);
 }
 
 export async function loadPrerender(sql: Sql) {
@@ -117,7 +135,8 @@ export async function loadPrerender(sql: Sql) {
   const series = (await sql(`select s.*, coalesce((select jsonb_agg(si.content_id order by si.position) from public.series_items si where si.series_id = s.id), '[]'::jsonb) as items
     from public.series s where s.status = 'published' and s.deleted_at is null order by s.sort`)).map((r) => ({ ...fromRow<Series>(r), items: Array.isArray(r.items) ? r.items as string[] : [] }));
   const pages = (await sql(`select * from public.pages where status = 'published' and deleted_at is null`)).map((r) => fromRow<Page>(r));
-  return { content, topics, series, pages };
+  const questions = (await sql(`select * from public.public_questions where status = 'published' and deleted_at is null and hidden = false order by published_at desc nulls last`)).map((r) => fromRow<PublicQuestion>(r));
+  return { content, topics, series, pages, questions };
 }
 
 async function run(userId: string | null, op: string, a: Record<string, unknown>, secret: string): Promise<unknown> {
@@ -180,14 +199,66 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         return (await sql(`select * from public.homepage_sections order by position`)).map((r) => fromRow<HomeSection>(r));
       case 'modules':
         return (await sql(`select * from public.modules`)).map((r) => fromRow<ModuleState>(r));
-      case 'pq.list': {
+      case 'pq.list':
+      case 'pq.search': {
+        const page = Math.max(1, Number(a.page ?? 1));
+        const pageSize = Math.min(50, Math.max(1, Number(a.pageSize ?? (op === 'pq.list' ? 100 : 20))));
+        const rows = await sql(
+          `select id, total from public.search_public_questions($1, $2, $3, $4, $5)`,
+          [String(a.q ?? ''), blank(a.topic), blank(a.category), pageSize, (page - 1) * pageSize],
+        );
+        const ids = rows.map((r) => String(r.id));
+        if (!ids.length) return op === 'pq.list' ? [] : { items: [], total: 0, page, pageSize };
+        const full = await sql(`select * from public.public_questions where id = any($1::uuid[]) and status = 'published' and deleted_at is null and hidden = false`, [ids]);
+        const map = new Map<string, PublicQuestion>();
+        for (const r of full) map.set(String(r.id), await withTags(sql, fromRow<PublicQuestion>(r)));
+        const items = ids.map((id) => map.get(id)).filter((x): x is PublicQuestion => !!x);
+        if (op === 'pq.list') return items;
+        return { items, total: Number(rows[0]?.total ?? 0), page, pageSize };
+      }
+      case 'pq.suggest': {
         const q = like(String(a.q ?? ''));
-        return (await sql(`select * from public.public_questions where status = 'published' and deleted_at is null and ($1 = '' or question_text ilike '%' || $1 || '%') order by published_at desc nulls last limit 100`, [q])).map((r) => fromRow<PublicQuestion>(r));
+        if (q.length < 2) return [];
+        const rows = await sql(
+          `select slug, question_text from public.public_questions
+           where status = 'published' and deleted_at is null and hidden = false
+             and search_text like '%' || public.he_normalize($1) || '%'
+           order by published_at desc nulls last limit 5`,
+          [q],
+        );
+        return rows.map((r) => ({ slug: String(r.slug), questionText: String(r.question_text) }));
+      }
+      case 'pq.categories':
+        return (await sql(`select id, slug, name, sort from public.halacha_categories order by sort`)).map((r) => fromRow(r));
+      case 'pq.eta': {
+        const rows = await sql(`select value from public.site_settings where key = 'public.responsa_eta_days'`);
+        const raw = rows[0]?.value;
+        const days = typeof raw === 'number' ? raw : Number(raw ?? 14);
+        return Number.isFinite(days) ? days : 14;
       }
       case 'pq.get': {
-        const rows = await sql(`select * from public.public_questions where slug = $1`, [a.slug]);
-        return rows[0] ? fromRow<PublicQuestion>(rows[0]) : null;
+        const rows = await sql(
+          `select * from public.public_questions where slug = $1 and status = 'published' and deleted_at is null and hidden = false`,
+          [a.slug],
+        );
+        if (!rows[0]) return null;
+        const question = await withTags(sql, fromRow<PublicQuestion>(rows[0]));
+        const related = question.topicId
+          ? (await sql(
+            `select * from public.public_questions
+             where status = 'published' and deleted_at is null and hidden = false and topic_id = $1 and id <> $2
+             order by published_at desc nulls last limit 4`,
+            [question.topicId, question.id],
+          )).map((r) => fromRow<PublicQuestion>(r))
+          : [];
+        return { ...question, related };
       }
+      case 'pq.week':
+        return (await sql(
+          `select * from public.public_questions
+           where status = 'published' and deleted_at is null and hidden = false and week_pick = true
+           order by published_at desc nulls last limit 1`,
+        )).map((r) => fromRow<PublicQuestion>(r));
       case 'track': {
         const rows = await sql(`select * from public.track_question($1, $2)`, [a.code, a.token]);
         return rows[0] ? fromRow(rows[0]) : null;
@@ -238,6 +309,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
       }
       case 'admin.update': {
         const entity = entityOf(a.entity);
+        if (typeof a.reason === 'string') await sql(`select set_config('app.audit_reason', $1, true)`, [String(a.reason).slice(0, 200)]);
         const patch = { ...(a.patch as Record<string, unknown>) };
         delete patch.status; delete patch.deletedAt;
         if (entity === 'content' && 'durationText' in patch) patch.durationSeconds = parseDuration(patch.durationText as string | null);
@@ -260,10 +332,14 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
             } else await sql(`delete from public.book_details where content_id = $1`, [a.id]);
           }
         }
+        if (entity === 'publicQuestions' && Array.isArray((a.patch as { tags?: unknown }).tags)) {
+          await replaceTags(sql, String(a.id), (a.patch as { tags: unknown }).tags);
+        }
         return getOne(sql, entity, String(a.id));
       }
       case 'admin.transition': {
         const entity = entityOf(a.entity);
+        if (typeof a.reason === 'string') await sql(`select set_config('app.audit_reason', $1, true)`, [String(a.reason).slice(0, 200)]);
         await mustWrite(sql, `update public.${TABLE[entity]} set status = $1, version = $2 where id = $3 returning id`, [a.to, a.expectedVersion, a.id], 'המעבר');
         return getOne(sql, entity, String(a.id));
       }
@@ -360,7 +436,11 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
       case 'admin.questions': {
         const opts = a.opts as { status?: string; page?: number; q?: string; sort?: string };
         const page = Math.max(1, Number(opts.page ?? 1));
-        const order = opts.sort === 'status' ? 'status asc, created_at desc' : opts.sort === 'code' ? 'tracking_code asc' : 'created_at desc';
+        const order = opts.sort === 'status' ? 'status asc, created_at desc'
+          : opts.sort === 'code' ? 'tracking_code asc'
+          : opts.sort === 'oldest' ? 'created_at asc'
+          : opts.sort === 'priority' ? 'priority desc, created_at asc'
+          : 'created_at desc';
         const rows = await sql(
           `select *, count(*) over () as total from public.question_submissions
            where ($1 = '' or status::text = $1) and ($2 = '' or question_text ilike '%' || $2 || '%' or tracking_code ilike '%' || $2 || '%')
@@ -375,38 +455,151 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
       }
       case 'admin.updateQuestion': {
         const patch = (a.patch ?? {}) as Record<string, unknown>;
+        const cur = await sql(`select status, answer_text, answer_audio_path from public.question_submissions where id = $1`, [a.id]);
+        const status = String(cur[0]?.status ?? '');
+        const answerTouched = ('answerText' in patch && patch.answerText !== cur[0]?.answer_text) || ('answerAudioPath' in patch && patch.answerAudioPath !== cur[0]?.answer_audio_path);
+        if (answerTouched && ['published', 'private_delivered', 'closed'].includes(status)) {
+          throw new ApiError(403, 'התשובה נעולה לאחר שנמסרה. אי אפשר לשנות אותה בלי להסיר את הפרסום.', '42501');
+        }
         const rows = await sql(
           `update public.question_submissions set
              answer_text = case when $3::bool then $4 else answer_text end,
              answer_audio_path = case when $5::bool then $6 else answer_audio_path end,
              assigned_to = case when $7::bool then $8::uuid else assigned_to end,
              topic_id = case when $9::bool then $10::uuid else topic_id end,
+             priority = case when $11::bool then $12::smallint else priority end,
+             due_at = case when $13::bool then $14::timestamptz else due_at end,
+             answer_sources = case when $15::bool then $16 else answer_sources end,
+             answer_kind = case when $17::bool then $18 else answer_kind end,
              version = $2
            where id = $1 returning *`,
-          [a.id, a.expectedVersion, 'answerText' in patch, patch.answerText ?? null, 'answerAudioPath' in patch, patch.answerAudioPath ?? null, 'assignedTo' in patch, patch.assignedTo ?? null, 'topicId' in patch, patch.topicId ?? null],
+          [a.id, a.expectedVersion, 'answerText' in patch, patch.answerText ?? null, 'answerAudioPath' in patch, patch.answerAudioPath ?? null, 'assignedTo' in patch, patch.assignedTo || null, 'topicId' in patch, patch.topicId || null, 'priority' in patch, Number(patch.priority ?? 1), 'dueAt' in patch, patch.dueAt || null, 'answerSources' in patch, patch.answerSources ?? null, 'answerKind' in patch, patch.answerKind ?? 'written'],
         );
         if (!rows[0]) throw new ApiError(403, 'שמירת השאלה נחסמה.', '42501');
         return questionRow(rows[0]);
       }
       case 'admin.transitionQuestion': {
-        const rows = await sql(`update public.question_submissions set status = $1, version = $2 where id = $3 returning *`, [a.to, a.expectedVersion, a.id]);
+        const reason = String(a.reason ?? '').trim().slice(0, 200);
+        const cur = await sql(`select status, contact_email, tracking_code from public.question_submissions where id = $1`, [a.id]);
+        if (!cur[0]) throw new ApiError(404, 'השאלה לא נמצאה');
+        const from = String(cur[0].status);
+        if (questionTransitionNeedsReason(from as QuestionStatus, a.to as QuestionStatus) && !reason) {
+          throw new ApiError(422, 'נדרשת סיבה ליומן עבור המעבר הזה.');
+        }
+        await sql(`select set_config('app.audit_reason', $1, true)`, [reason]);
+        let notifyHash: string | null = null;
+        let notifyToken = '';
+        const delivering = a.to === 'private_delivered' || a.to === 'published';
+        if (delivering && cur[0].contact_email) {
+          notifyToken = newToken();
+          notifyHash = await sha256Hex(notifyToken);
+        }
+        const rows = await sql(
+          `update public.question_submissions set status = $1, version = $2,
+             notify_token_hash = case when $4::bool then $5 else notify_token_hash end
+           where id = $3 returning *`,
+          [a.to, a.expectedVersion, a.id, notifyHash !== null, notifyHash],
+        );
         if (!rows[0]) throw new ApiError(403, 'המעבר נחסם.', '42501');
-        return questionRow(rows[0]);
+        const saved = questionRow(rows[0]);
+        if (a.to === 'answered') {
+          quiet(notifyStaff('תשובה ממתינה לאישור הרב', `מספר מעקב: ${saved.trackingCode}\n${process.env.VITE_SITE_URL ?? ''}/admin/questions/${saved.id}`));
+        }
+        if (notifyToken && saved.contactEmail) quiet(notifyAnswerReady(saved.contactEmail, saved.trackingCode, notifyToken));
+        return saved;
       }
       case 'admin.publishQuestion': {
-        const p = a.pub as { questionText: string; answerBlocks: unknown; topicId: string | null; attribution: string };
+        const p = a.pub as { questionText: string; topicId?: string | null; attribution: string; categoryId?: string | null; answerKind?: string };
+        const found = await sql(`select * from public.question_submissions where id = $1`, [a.id]);
+        if (!found[0]) throw new ApiError(404, 'השאלה לא נמצאה');
+        const sub = questionRow(found[0]);
+        let built: ReturnType<typeof buildPublicFromApproved>;
+        try { built = buildPublicFromApproved(sub, String(p.questionText ?? '')); }
+        catch (e) { throw new ApiError(403, (e as Error).message, '42501'); }
+        const audioUrl = await copyApprovedAudio(sub.answerAudioPath);
         const slug = `${slugify(p.questionText).slice(0, 40)}-${crypto.randomUUID().slice(0, 4)}`;
         const created = await sql(
-          `insert into public.public_questions (slug, question_text, answer_blocks, topic_id, attribution, approved_by_rabbi, status, source_submission_id)
-           values ($1, $2, $3::jsonb, $4, $5, true, 'in_review', $6) returning id, version`,
-          [slug, p.questionText, JSON.stringify(p.answerBlocks ?? []), p.topicId, p.attribution, a.id],
+          `insert into public.public_questions (slug, question_text, answer_blocks, answer_audio_url, topic_id, attribution, approved_by_rabbi, status, source_submission_id, sources, answer_kind, category_id)
+           values ($1, $2, $3::jsonb, $4, $5, $6, $7, 'in_review', $8, $9, $10, $11) returning id, version`,
+          [slug, p.questionText, JSON.stringify(built.blocks), audioUrl, p.topicId || null, p.attribution, built.approvedByRabbi, a.id, sub.answerSources ?? null, p.answerKind || sub.answerKind || 'written', p.categoryId || null],
         );
         const pq = created[0];
         if (!pq) throw new ApiError(403, 'יצירת השו״ת נחסמה.', '42501');
+        if (!built.approvedByRabbi) return { published: false, needsReapproval: true, id: String(pq.id) };
         await mustWrite(sql, `update public.public_questions set status = 'approved', version = $2 where id = $1 returning id`, [pq.id, pq.version], 'אישור השו״ת');
-        await mustWrite(sql, `update public.public_questions set status = 'published', version = $2 where id = $1 returning id`, [pq.id, Number(pq.version) + 1], 'פרסום השו״ת');
-        await mustWrite(sql, `update public.question_submissions set status = 'published', public_question_id = $1, version = $2 where id = $3 returning id`, [pq.id, a.expectedVersion, a.id], 'עדכון השאלה');
+        await mustWrite(sql, `update public.public_questions set status = 'published', published_at = coalesce(published_at, now()), version = $2 where id = $1 returning id`, [pq.id, Number(pq.version) + 1], 'פרסום השו״ת');
+        const reason = '';
+        await sql(`select set_config('app.audit_reason', $1, true)`, [reason]);
+        let notifyToken = '';
+        let notifyHash: string | null = null;
+        if (sub.contactEmail) { notifyToken = newToken(); notifyHash = await sha256Hex(notifyToken); }
+        await mustWrite(sql, `update public.question_submissions set status = 'published', public_question_id = $1, version = $2, notify_token_hash = coalesce($4, notify_token_hash) where id = $3 returning id`, [pq.id, a.expectedVersion, a.id, notifyHash], 'עדכון השאלה');
+        if (notifyToken && sub.contactEmail) quiet(notifyAnswerReady(sub.contactEmail, sub.trackingCode, notifyToken));
+        return { published: true, needsReapproval: false, id: String(pq.id) };
+      }
+      case 'admin.unpublishPublic': {
+        const reason = String(a.reason ?? '').trim().slice(0, 200);
+        if (!reason) throw new ApiError(422, 'נדרשת סיבה ליומן כדי להסיר פרסום.');
+        await sql(`select set_config('app.audit_reason', $1, true)`, [reason]);
+        if (a.mode === 'hidden') {
+          await mustWrite(sql, `update public.public_questions set hidden = true, version = $2 where id = $1 returning id`, [a.id, a.expectedVersion], 'הסתרת השו״ת');
+        } else {
+          await mustWrite(sql, `update public.public_questions set status = 'draft', version = $2 where id = $1 returning id`, [a.id, a.expectedVersion], 'הסרת פרסום');
+        }
         return null;
+      }
+      case 'admin.questionStats': {
+        const rows = await sql(`
+          select
+            count(*) filter (where status = 'answered')::int as pending_rabbi,
+            count(*) filter (where status not in ('published','private_delivered','closed'))::int as open,
+            count(*) filter (where due_at is not null and due_at < now() and status not in ('published','private_delivered','closed'))::int as overdue,
+            avg(extract(epoch from (coalesce(answered_at, approved_at) - created_at)) / 86400.0) filter (where answered_at is not null or approved_at is not null) as avg_days
+          from public.question_submissions`);
+        const byTopic = await sql(`
+          select topic_id, count(*)::int as count from public.question_submissions
+          group by topic_id order by count desc`);
+        const s = rows[0] ?? {};
+        return {
+          pendingRabbi: Number(s.pending_rabbi ?? 0),
+          open: Number(s.open ?? 0),
+          overdue: Number(s.overdue ?? 0),
+          avgResponseDays: s.avg_days == null ? null : Math.round(Number(s.avg_days) * 10) / 10,
+          byTopic: byTopic.map((r) => ({ topicId: r.topic_id ? String(r.topic_id) : null, count: Number(r.count) })),
+        };
+      }
+      case 'admin.staff': {
+        await staff(sql);
+        const people = await asOwner((q) => q(
+          `select distinct u.id, u.display_name from public.app_users u
+           join public.user_roles r on r.user_id = u.id
+           where r.role in ('owner','admin','editor','reviewer','rabbi')
+           order by u.display_name nulls last`,
+        ));
+        return people.map((r) => ({ id: String(r.id), displayName: r.display_name ? String(r.display_name) : 'איש צוות' }));
+      }
+      case 'admin.templates':
+        return (await sql(`select * from public.answer_templates order by title`)).map((r) => fromRow(r));
+      case 'admin.saveTemplate': {
+        const title = String(a.title ?? '').trim();
+        const body = String(a.body ?? '').trim();
+        if (!title || !body) throw new ApiError(422, 'לתבנית נדרשים כותרת ונוסח.');
+        if (a.id) {
+          const rows = await sql(`update public.answer_templates set title = $1, body = $2, updated_at = now() where id = $3 returning *`, [title, body, a.id]);
+          if (!rows[0]) throw new ApiError(403, 'שמירת התבנית נחסמה.', '42501');
+          return fromRow(rows[0]);
+        }
+        const rows = await sql(`insert into public.answer_templates (title, body, created_by) values ($1, $2, public.app_uid()) returning *`, [title, body]);
+        if (!rows[0]) throw new ApiError(403, 'שמירת התבנית נחסמה.', '42501');
+        return fromRow(rows[0]);
+      }
+      case 'admin.deleteTemplate':
+        await mustWrite(sql, `delete from public.answer_templates where id = $1 returning id`, [a.id], 'מחיקת התבנית');
+        return null;
+      case 'admin.setEta': {
+        const days = Math.min(90, Math.max(1, Number(a.days ?? 14)));
+        await mustWrite(sql, `insert into public.site_settings (key, value) values ('public.responsa_eta_days', to_jsonb($1::int)) on conflict (key) do update set value = excluded.value, updated_at = now() returning key`, [days], 'עדכון זמן המענה');
+        return days;
       }
       case 'admin.users': {
         if ((await sql(`select public.is_admin() as ok`))[0]?.ok !== true) throw new ApiError(403, 'ניהול משתמשים למנהלים בלבד.', '42501');
@@ -468,6 +661,27 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         throw new ApiError(404, 'פעולה לא מוכרת');
     }
   });
+}
+
+async function withTags(sql: Sql, q: PublicQuestion): Promise<PublicQuestion> {
+  const tags = await sql(`select tag from public.public_question_tags where question_id = $1 order by tag`, [q.id]);
+  return { ...q, tags: tags.map((t) => String(t.tag)) };
+}
+
+async function copyApprovedAudio(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const ext = (path.split('.').pop() ?? '').toLowerCase();
+  if (!['mp3', 'm4a', 'aac', 'ogg', 'webm'].includes(ext)) return null;
+  const name = `${new Date().getUTCFullYear()}/${crypto.randomUUID()}/answer.${ext}`;
+  const rows = await asOwner((sql) => sql(
+    `insert into public.storage_objects (bucket_id, name, mime, bytes, size)
+     select 'public-media', $2, mime, bytes, size from public.storage_objects
+     where bucket_id = 'private-submissions' and name = $1 and bytes is not null
+     returning name`,
+    [path, name],
+  ));
+  const stored = rows[0]?.name ? String(rows[0].name) : '';
+  return stored ? `/api/media/public-media/${stored}` : null;
 }
 
 function questionRow(r: Row): QuestionSubmission {

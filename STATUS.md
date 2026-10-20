@@ -1,5 +1,10 @@
 # STATUS — 20.10.2026
 
+## Q&A workflow (20.10.2026)
+- The site is live on Neon. This change does **not** apply SQL and does **not** deploy. Apply `neon/migrations/007_qa_workflow.sql` then `neon/migrations/008_qa_bank.sql` on the live database (additive, idempotent). Seed row counts are unchanged.
+- After approval, editing the answer returns the question to `answered` and clears the rabbi’s approval. After delivery (`published` / `private_delivered` / `closed`) the answer text and audio are locked. Publishing builds the public answer on the server from the approved text. A changed public question wording waits for the rabbi again. Unpublish and send-back require an audit reason.
+- Asker email (link only) and staff email/Telegram are no-ops until `RESEND_API_KEY`, `MAIL_FROM`, `NOTIFY_EMAILS`, and optionally `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` are set. Turnstile is off until `TURNSTILE_SECRET` and `VITE_TURNSTILE_SITE_KEY` are set. No sample Q&A was invented.
+
 ## Neon migration (20.10.2026)
 - The running code no longer uses Supabase. The browser calls `/api`. The server uses `DATABASE_URL` (`@neondatabase/serverless` on Neon, `pg` on localhost) and never sends that URL to the browser.
 - Auth is an httpOnly session cookie (`or_session`) backed by `app_users` / `sessions`. Roles, invites, and the rabbi-approval guard are unchanged. Invites are not emailed: the CMS shows the one-time `/accept` link.

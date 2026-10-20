@@ -12,8 +12,8 @@ import type { ContentItem, HomeSection } from '../shared/types.ts';
 
 function Actions() {
   const tiles = [
-    { to: '/library?type=video', icon: 'watch' as const, title: 'לצפות', text: 'שיעורים, דרשות וקטעים קצרים' },
-    { to: '/library?type=audio', icon: 'listen' as const, title: 'להאזין', text: 'תוכנית אור הנאמ״ן והקלטות' },
+    { to: '/watch', icon: 'watch' as const, title: 'לצפות', text: 'אודיטוריום השיעורים' },
+    { to: '/watch?hall=listen', icon: 'listen' as const, title: 'להאזין', text: 'תוכנית אור הנאמ״ן והקלטות' },
     { to: '/books', icon: 'read' as const, title: 'לעיין', text: 'ספרים, עלונים ודברי תורה' },
     { to: '/ask', icon: 'ask' as const, title: 'לשאול', text: 'שאלה לרב, גם בעילום שם' },
   ];

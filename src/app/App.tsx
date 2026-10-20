@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import WatchPage from '../pages/Watch.tsx';
 import { IS_DEMO } from './config.ts';
 import { PrefsProvider } from './prefs.tsx';
 import { LibraryStateProvider } from './library-state.tsx';
@@ -43,6 +44,7 @@ type Route = [pattern: string, Page: ComponentType<{ params: Record<string, stri
 const ROUTES: Route[] = [
   ['/', HomePage],
   ['/library', LibraryPage],
+  ['/watch', WatchPage],
   ['/item/:slug', ItemPage],
   ['/series', SeriesList],
   ['/series/:slug', SeriesPage],

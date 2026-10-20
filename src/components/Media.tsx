@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import { Link } from '../app/router.tsx';
 import { useLibraryState } from '../app/library-state.tsx';
 import { usePlayer, type Track } from '../player/PlayerProvider.tsx';
 import { embedUrl, formatDuration, NATIVE_PLAYABLE_MIME, youtubeThumb } from '../shared/media.ts';
 import type { ContentItem, MediaSource } from '../shared/types.ts';
 import { Icon } from './Icon.tsx';
+import { LessonPlayer } from './LessonPlayer.tsx';
 import { Badge, IconButton, TYPE_ICON, TYPE_LABEL, splitTitle } from './ui.tsx';
 import { useToast } from './Toast.tsx';
 
@@ -109,67 +109,39 @@ export function CardGrid({ items, view = 'grid' }: { items: ContentItem[]; view?
   );
 }
 
-/** Main player on the item page. Never autoplays; YouTube iframe loads only after a click. */
-export function MediaPlayer({ item }: { item: ContentItem }) {
+/** Main player. Never autoplays; a YouTube iframe loads only after a click. */
+export function MediaPlayer({ item, startAt = null, resume = true, notes = false }: { item: ContentItem; startAt?: number | null; resume?: boolean; notes?: boolean }) {
   const { mode, source } = pickSource(item);
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
   const player = usePlayer();
-  const [main] = splitTitle(item.title);
 
   if (!source) return <div className="notice"><Icon name="info" /><div>לפריט זה עדיין לא אותר מקור מדיה.</div></div>;
 
-  if (mode === 'embed' && source.providerId && !failed) {
-    const src = embedUrl(source.provider, source.providerId)!;
-    return (
-      <div className={`media-frame ${item.type === 'short' ? 'short' : ''}`}>
-        {loaded ? (
-          <iframe
-            src={`${src}&autoplay=1`}
-            title={`נגן: ${main}`}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-            loading="lazy"
-            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
-          />
-        ) : (
-          <button className="media-poster" onClick={() => setLoaded(true)} aria-label={`ניגון הסרטון: ${main}`}>
-            <img src={youtubeThumb(source.providerId, 'hq')} alt="" loading="eager" width={480} height={360} onError={(e) => e.currentTarget.classList.add('img-failed')} />
-            <span className="play"><Icon name="play" /></span>
-            <span className="consent">הנגן הרשמי של YouTube ייטען בלחיצה</span>
-          </button>
-        )}
-      </div>
-    );
+  if ((mode === 'embed' && source.providerId) || (mode === 'native' && source.mime?.startsWith('video/'))) {
+    return <LessonPlayer key={item.id} item={item} source={source} kind={mode === 'embed' ? 'embed' : 'video'} startAt={startAt} resume={resume} notes={notes} />;
   }
 
-  if (mode === 'native' && source.mime && !failed) {
-    if (source.mime.startsWith('audio/')) {
-      const track = playableTrack(item)!;
-      const active = player.isCurrent(item.id);
-      return (
-        <div className="side-card row" style={{ justifyContent: 'space-between' }}>
+  if (mode === 'native' && source.mime?.startsWith('audio/')) {
+    const track = playableTrack(item)!;
+    const active = player.isCurrent(item.id);
+    return (
+      <div className="side-card stack">
+        <div className="spread">
           <div className="row"><Icon name="listen" /> <strong>{source.storagePath ? 'הקלטה שמורה באתר' : 'הקלטה מקושרת'}</strong></div>
           <button className="btn" onClick={() => (active ? player.toggle() : player.play(track))}>
-            <Icon name={active && player.playing ? 'pause' : 'play'} /> {active && player.playing ? 'השהיה' : 'האזנה'}
+            <Icon name={active && player.playing ? 'pause' : 'play'} /> {active && player.playing ? 'השהיה' : 'האזנה ברקע'}
           </button>
         </div>
-      );
-    }
-    return (
-      <div className="media-frame">
-        <video controls preload="none" playsInline src={source.url} onError={() => setFailed(true)} aria-label={main} />
+        <p className="soft" style={{ margin: 0 }}>ההאזנה נמשכת במעבר בין עמודים, ובמסך נעול אם הדפדפן מאפשר פקדי מדיה.</p>
       </div>
     );
   }
 
   return (
     <div className="state" style={{ padding: 'var(--s-6)' }}>
-      <Icon name={failed ? 'alert' : 'external'} />
-      <h3 style={{ margin: 0 }}>{failed ? 'הנגן לא הצליח לטעון את הקובץ' : 'המדיה זמינה באתר המקור'}</h3>
+      <Icon name="external" />
+      <h3 style={{ margin: 0 }}>המדיה זמינה באתר המקור</h3>
       <p style={{ margin: 0 }}>
-        {failed ? 'אפשר לפתוח את המקור המקורי.' : `לפריט זה אין עדיין הטמעה מאושרת או קובץ שמור אצלנו. ${source.kind === 'pdf' ? 'הקובץ מתארח באתר המקור.' : ''}`}
+        {`לפריט זה אין עדיין הטמעה מאושרת או קובץ שמור אצלנו. ${source.kind === 'pdf' ? 'הקובץ מתארח באתר המקור.' : ''}`}
       </p>
       <a className="btn btn-secondary" href={source.url} target="_blank" rel="noopener noreferrer">
         <Icon name="external" /> פתיחה ב{providerLabel(source.provider)}<span className="sr-only"> (נפתח בחלון חדש)</span>

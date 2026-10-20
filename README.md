@@ -69,6 +69,8 @@ Production already runs on Neon (`ravlior`, Postgres 18). This repository does *
 8. `neon/migrations/007_qa_workflow.sql` (additive; safe on a database that already has the seed)
 9. `neon/migrations/008_qa_bank.sql`
 10. `neon/migrations/009_site_updates.sql` (site search + update signups)
+11. `neon/migrations/020_cms_books_events_contact.sql`
+12. `neon/migrations/021_media_hall.sql` (auditorium: chapters + transcript; must follow 020)
 
 Then, optionally, `neon/verify/row_counts.sql` and `neon/verify/rls_checks.sql`. The checks run in a transaction and roll back. Every line should print `PASS`.
 

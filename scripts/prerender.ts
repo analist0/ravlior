@@ -9,6 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { lessonJsonLd, videoSitemapXml } from '../src/shared/lesson.ts';
 import type { ContentItem, EventRecord, Institution, Page, PublicQuestion, SeedData, Series, Topic } from '../src/shared/types.ts';
 import { DEFAULT_PAGES } from '../src/shared/defaults.ts';
 import { bookJsonLd, eventJsonLd, isListed } from '../src/shared/sections.ts';
@@ -17,6 +18,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = resolve(root, 'dist');
 const SITE = (process.env.VITE_SITE_URL ?? '').replace(/\/$/, '');
 const template = readFileSync(resolve(dist, 'index.html'), 'utf8');
+if (!template.includes('<!--prerender-->') || !template.includes('<!--head-meta-->')) {
+  throw new Error('dist/index.html is missing prerender markers. Run vite build before prerender.');
+}
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const split = (t: string) => { const i = t.indexOf(' / '); return i > 0 ? [t.slice(0, i).trim(), t.slice(i + 3).trim()] : [t.trim(), '']; };
@@ -42,7 +46,7 @@ async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; se
   };
 }
 
-interface Out { path: string; title: string; description: string; body: string; image?: string | null; type?: string; jsonLd?: unknown }
+interface Out { path: string; title: string; description: string; body: string; image?: string | null; type?: string; jsonLd?: unknown; preload?: string | null }
 function render(o: Out): string {
   const full = o.title ? `${o.title} | אור המאיר` : 'אור המאיר — תורתו של הרב ליאור כהן';
   const canonical = SITE ? `${SITE}${encodeURI(o.path)}` : '';
@@ -59,15 +63,16 @@ function render(o: Out): string {
     `<meta property="og:image:alt" content="הרב ליאור כהן שליט״א — תורה, הלכה, שיעורים, שאלות ותשובות" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     o.jsonLd ? `<script type="application/ld+json">${JSON.stringify(o.jsonLd).replace(/</g, '\\u003c')}</script>` : '',
+    o.preload ? `<link rel="preload" as="image" href="${esc(o.preload)}" fetchpriority="high" />` : '',
   ].filter(Boolean).join('\n    ');
-  const nav = `<nav aria-label="ניווט"><a href="/">בית</a> · <a href="/library">ספרייה</a> · <a href="/series">סדרות</a> · <a href="/topics">נושאים</a> · <a href="/books">ספרים</a> · <a href="/responsa">שו״ת</a> · <a href="/ask">שאלה לרב</a></nav>`;
+  const nav = `<nav aria-label="ניווט"><a href="/">בית</a> · <a href="/watch">אודיטוריום</a> · <a href="/library">ספרייה</a> · <a href="/series">סדרות</a> · <a href="/topics">נושאים</a> · <a href="/books">ספרים</a> · <a href="/responsa">שו״ת</a> · <a href="/ask">שאלה לרב</a></nav>`;
   return template
     .replace(/<!--head-meta-->[\s\S]*?<!--\/head-meta-->/, head)
     .replace('<!--prerender-->', `<div class="container prerendered">${nav}<main>${o.body}</main></div>`);
 }
-function write(path: string, html: string) {
+function write(route: string, html: string) {
   // /item/x → dist/item/x.html (served with cleanUrls on Vercel); / → dist/index.html
-  const file = path === '/' ? resolve(dist, 'index.html') : resolve(dist, `.${path}.html`);
+  const file = route === '/' ? resolve(dist, 'index.html') : resolve(dist, `.${route}.html`);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, html);
 }
@@ -80,6 +85,11 @@ outs.push({ path: '/', title: '', description: 'ספריית שיעורים, ד�
   body: `<h1>לצפות, להאזין, לעיין ולשאול</h1><p>שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן, והנחלת תורתו של מרן הרב מאיר מאזוז זצ״ל — כל פריט עם ייחוס למקורו.</p><h2>חדש בערוץ</h2>${list(latest.slice(0, 12))}`,
   jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'אור המאיר', inLanguage: 'he', ...(SITE ? { url: SITE } : {}),
     potentialAction: { '@type': 'SearchAction', target: `${SITE || ''}/library?q={query}`, 'query-input': 'required name=query' } } });
+const watchable = latest.filter((c) => c.type === 'video' || c.type === 'short' || c.type === 'live');
+const audible = latest.filter((c) => c.type === 'audio');
+const hallHero = watchable.find((c) => c.featured) ?? watchable[0];
+const hallThumb = hallHero?.sources.find((s) => s.provider === 'youtube' && s.providerId)?.providerId;
+outs.push({ path: '/watch', title: 'אודיטוריום — שיעורי וידאו', description: 'אולם השיעורים: וידאו, קטעים, שידורים מוקלטים ושיעורי שמע של הרב ליאור כהן.', preload: hallThumb ? `https://i.ytimg.com/vi/${hallThumb}/hqdefault.jpg` : null, body: `<h1>אודיטוריום</h1><p>שיעורי וידאו ושמע. הנגן נטען רק בלחיצה.</p><h2>וידאו</h2>${list(watchable.slice(0, 40))}<h2>שמע</h2>${list(audible)}` });
 outs.push({ path: '/library', title: 'ספריית השיעורים', description: 'חיפוש וסינון שיעורי וידאו, אודיו, קטעים קצרים, דברי תורה, ספרים ותשובות של הרב ליאור כהן.', body: `<h1>ספריית השיעורים</h1>${list(latest.slice(0, 60))}` });
 outs.push({ path: '/series', title: 'סדרות', description: 'סדרות שיעורים של הרב ליאור כהן.', body: `<h1>סדרות</h1><ul>${data.series.map((s) => `<li><a href="/series/${esc(s.slug)}">${esc(s.title)}</a></li>`).join('')}</ul>` });
 for (const s of data.series) {
@@ -151,21 +161,15 @@ for (const c of data.content) {
     path: `/item/${c.slug}`, title: main!, type: c.type === 'video' || c.type === 'short' ? 'video.other' : 'article',
     description: (c.summary ?? (sub || `${TYPE[c.type]} — ${main}`)).slice(0, 180),
     image: yt ? `https://i.ytimg.com/vi/${yt.providerId}/hqdefault.jpg` : null,
-    body: `<article><h1>${esc(main!)}</h1>${sub ? `<p>${esc(sub)}</p>` : ''}<p>${esc(c.speaker ?? 'ערוץ מוסדות אור המאיר')} · ${TYPE[c.type]}${c.durationText ? ` · ${esc(c.durationText)}` : ''}</p>${c.summary ? `<p>${esc(c.summary)}</p>` : ''}<h2>מקורות</h2><ul>${srcs}</ul></article>`,
-    // Structured data only with real fields: a breadcrumb (VideoObject needs an upload date we do not have)
-    // and an Article when the item is text and a speaker is already on the record.
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@graph': [
-        ...(SITE ? [{ '@type': 'BreadcrumbList', itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'ספרייה', item: `${SITE}/library` },
-          { '@type': 'ListItem', position: 2, name: main, item: `${SITE}${encodeURI(`/item/${c.slug}`)}` }] }] : []),
-        ...(['article', 'book', 'leaflet'].includes(c.type) ? [{
-          '@type': 'Article', headline: main, inLanguage: 'he',
-          ...(c.speaker ? { author: { '@type': 'Person', name: c.speaker } } : {}),
-        }] : []),
+    body: `<article><h1>${esc(main!)}</h1>${sub ? `<p>${esc(sub)}</p>` : ''}<p>${esc(c.speaker ?? 'ערוץ מוסדות אור המאיר')} · ${TYPE[c.type]}${c.durationText ? ` · ${esc(c.durationText)}` : ''}</p>${c.summary ? `<p>${esc(c.summary)}</p>` : ''}${c.transcript ? `<h2>תמליל</h2><p>${esc(c.transcript)}</p>` : ''}<h2>מקורות</h2><ul>${srcs}</ul></article>`,
+    // VideoObject / PodcastEpisode only when a real source date exists. No invented upload date.
+    jsonLd: lessonJsonLd(c, main!, SITE ? `${SITE}${encodeURI(`/item/${c.slug}`)}` : null, SITE ? {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'אודיטוריום', item: `${SITE}/watch` },
+        { '@type': 'ListItem', position: 2, name: main, item: `${SITE}${encodeURI(`/item/${c.slug}`)}` },
       ],
-    },
+    } : null) ?? undefined,
   });
 }
 
@@ -173,6 +177,7 @@ for (const o of outs) write(o.path, render(o));
 const urls = outs.map((o) => o.path);
 if (SITE) {
   writeFileSync(resolve(dist, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${esc(SITE + encodeURI(u))}</loc></url>`).join('\n')}\n</urlset>\n`);
+  writeFileSync(resolve(dist, 'video-sitemap.xml'), videoSitemapXml(data.content, SITE));
 }
-writeFileSync(resolve(dist, 'robots.txt'), `User-agent: *\nDisallow: /admin\nDisallow: /track\nDisallow: /favorites\nDisallow: /api/\n${SITE ? `Sitemap: ${SITE}/sitemap.xml\n` : ''}`);
+writeFileSync(resolve(dist, 'robots.txt'), `User-agent: *\nDisallow: /admin\nDisallow: /track\nDisallow: /favorites\nDisallow: /api/\n${SITE ? `Sitemap: ${SITE}/sitemap.xml\nSitemap: ${SITE}/video-sitemap.xml\n` : ''}`);
 console.log(`prerender: ${outs.length} pages from ${data.source}${SITE ? ' + sitemap.xml' : ' (no VITE_SITE_URL → no canonical/sitemap)'}`);

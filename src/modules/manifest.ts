@@ -49,13 +49,13 @@ export const MODULES: ModuleManifest[] = [
     migrations: [...CORE_SQL, '004_search.sql', '009_site_updates.sql'], featureFlag: 'module.library', enabledByDefault: true,
   },
   {
-    id: 'media', version: '1.0.0', name: 'מדיה ונגנים', description: 'מתאמי ספקים, נגן אודיו מתמשך, העלאות ל-Storage.',
-    core: true, dependsOn: [], routes: [],
+    id: 'media', version: '1.1.0', name: 'מדיה ונגנים', description: 'אודיטוריום, נגני וידאו ושמע, העלאות.',
+    core: true, dependsOn: [], routes: ['/watch'],
     adminSections: [{ id: 'media', label: 'מקורות מדיה' }, { id: 'uploads', label: 'העלאות' }],
     navigation: [],
     permissions: [{ action: 'media.upload', roles: EDIT }],
     settings: [{ key: 'allowUploads', label: 'לאפשר העלאות קבצים', type: 'boolean', default: true }],
-    migrations: [...CORE_SQL, '004_search.sql'], featureFlag: 'module.media', enabledByDefault: true,
+    migrations: [...CORE_SQL, '004_search.sql', '021_media_hall.sql'], featureFlag: 'module.media', enabledByDefault: true,
   },
   {
     id: 'books', version: '1.0.0', name: 'ספרים ועלונים', description: 'ספרים, קונטרסים ועלונים עם פרטי מקור.',

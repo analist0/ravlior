@@ -7,10 +7,12 @@ import { Icon } from '../components/Icon.tsx';
 import { CardGrid, providerLabel } from '../components/Media.tsx';
 import { Swap } from '../components/Motion.tsx';
 import { Breadcrumbs, Button, CardSkeletons, EmptyState, ErrorState, Pagination, SelectField, TYPE_LABEL } from '../components/ui.tsx';
-import { CONTENT_TYPES, type ContentQuery, type ContentType, type MediaProvider } from '../shared/types.ts';
+import { CONTENT_TYPES, type ContentQuery, type ContentType, type DatedFilter, type LengthBucket, type MediaProvider } from '../shared/types.ts';
 
 const PROVIDERS: MediaProvider[] = ['youtube', 'kol-barama', 'ykr', 'ktr', 'hm-news', 'pdf', 'storage'];
 const SORTS: [NonNullable<ContentQuery['sort']>, string][] = [['newest', 'לפי סדר הערוץ (חדש קודם)'], ['oldest', 'לפי סדר הערוץ (ישן קודם)'], ['title', 'לפי שם'], ['duration', 'הארוכים קודם']];
+const LENGTHS: [LengthBucket | '', string][] = [['', 'כל האורך'], ['short', 'עד 10 דקות'], ['medium', '10 עד 40 דקות'], ['long', 'מעל 40 דקות'], ['unknown', 'משך לא ידוע']];
+const DATED: [DatedFilter | '', string][] = [['', 'כל התאריכים'], ['known', 'יש תאריך במקור'], ['unknown', 'תאריך לא ידוע']];
 
 export default function LibraryPage() {
   const repo = useRepo();
@@ -22,6 +24,8 @@ export default function LibraryPage() {
     topic: params.get('topic') ?? '',
     series: params.get('series') ?? '',
     provider: (params.get('provider') as MediaProvider) || '',
+    length: (params.get('length') as LengthBucket) || '',
+    dated: (params.get('dated') as DatedFilter) || '',
     sort: (params.get('sort') as ContentQuery['sort']) || undefined,
     page: Number(params.get('page') ?? 1) || 1,
     pageSize: 24,
@@ -37,8 +41,8 @@ export default function LibraryPage() {
   const topics = useAsync(() => repo.listTopics(), [repo]);
   const series = useAsync(() => repo.listSeries(), [repo]);
   const res = useAsync(() => repo.listContent(q), [params.toString()]);
-  const active = [q.type, q.topic, q.series, q.provider, q.q].filter(Boolean).length;
-  const advancedCount = [q.topic, q.series, q.provider, q.sort].filter(Boolean).length;
+  const active = [q.type, q.topic, q.series, q.provider, q.q, q.length, q.dated].filter(Boolean).length;
+  const advancedCount = [q.topic, q.series, q.provider, q.sort, q.length, q.dated].filter(Boolean).length;
   const [advancedOpen, setAdvancedOpen] = useState(() => innerWidth >= 900 || advancedCount > 0);
   useHead({
     title: q.type ? `ספרייה — ${TYPE_LABEL[q.type]}` : 'ספריית השיעורים',
@@ -94,6 +98,16 @@ export default function LibraryPage() {
               {PROVIDERS.map((p) => <option key={p} value={p}>{providerLabel(p)}</option>)}
             </SelectField>
           </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <SelectField label="אורך" value={q.length ?? ''} onChange={(e) => update({ length: e.target.value, page: null })}>
+              {LENGTHS.map(([v, l]) => <option key={v || 'all'} value={v}>{l}</option>)}
+            </SelectField>
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <SelectField label="תאריך" value={q.dated ?? ''} onChange={(e) => update({ dated: e.target.value, page: null })} hint="תאריך האירוע או הפרסום במקור, לא תאריך העלאה לאתר">
+              {DATED.map(([v, l]) => <option key={v || 'all-d'} value={v}>{l}</option>)}
+            </SelectField>
+          </div>
           <div style={{ flex: '1 1 160px' }}>
             <SelectField label="מיון" value={q.sort ?? 'newest'} onChange={(e) => update({ sort: e.target.value === 'newest' ? null : e.target.value, page: null })} hint={q.q ? 'בחיפוש התוצאות ממוינות לפי התאמה' : undefined}>
               {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -108,7 +122,7 @@ export default function LibraryPage() {
           {/* On a failed load there is no count to report — never show "0 items" next to the error. */}
           {res.loading ? 'טוען…' : res.error ? 'הטעינה נכשלה' : `${res.data?.total ?? 0} פריטים`}
           {active > 0 && !res.loading && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => update({ q: null, type: null, topic: null, series: null, provider: null, page: null })} style={{ marginInlineStart: 8 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => update({ q: null, type: null, topic: null, series: null, provider: null, length: null, dated: null, page: null })} style={{ marginInlineStart: 8 }}>
               ניקוי מסננים
             </button>
           )}
@@ -122,7 +136,7 @@ export default function LibraryPage() {
       {res.error && <ErrorState error={res.error} onRetry={res.reload} />}
       {res.loading && !res.data && <CardSkeletons />}
       {res.data && res.data.items.length === 0 && (
-        <EmptyState title="לא נמצאו פריטים" action={<Button variant="secondary" onClick={() => update({ q: null, type: null, topic: null, series: null, provider: null, page: null })}>ניקוי מסננים</Button>}>
+        <EmptyState title="לא נמצאו פריטים" action={<Button variant="secondary" onClick={() => update({ q: null, type: null, topic: null, series: null, provider: null, length: null, dated: null, page: null })}>ניקוי מסננים</Button>}>
           נסו מילה אחרת או הסירו מסנן.
         </EmptyState>
       )}

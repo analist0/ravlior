@@ -9,11 +9,11 @@ import { Badge, Breadcrumbs, Button, Checkbox, ErrorState, Notice, SelectField, 
 import { CONTENT_STATUS_LABEL, VersionConflictError, canEdit, isAdmin, nextContentStatuses } from '../shared/workflow.ts';
 import { sanitizeBlocks } from '../shared/blocks.ts';
 import { bookOffers, bookSample, bookToc } from '../shared/sections.ts';
-import type { Block, ContentItem, ContentStatus, Series } from '../shared/types.ts';
+import type { Block, ContentItem, ContentStatus, MediaChapter, Series } from '../shared/types.ts';
 import { useAdmin } from './AdminApp.tsx';
 import { ENTITIES, validateRecord, type FieldDef } from './entities.ts';
 import { StatusBadge } from './EntityList.tsx';
-import { BlockEditor, BookDetailsEditor, RevisionsPanel, SeriesItemsEditor, SourcesEditor, StatusHelp, TopicsPicker, UrlsField } from './Panels.tsx';
+import { BlockEditor, BookDetailsEditor, LessonNotesEditor, RevisionsPanel, SeriesItemsEditor, SourcesEditor, StatusHelp, TopicsPicker, UrlsField } from './Panels.tsx';
 
 const WIDTHS: [number, string][] = [[360, 'טלפון'], [768, 'טאבלט'], [1200, 'מחשב']];
 
@@ -55,6 +55,7 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
   const [preview, setPreview] = useState<number | null>(null);
   const [reason, setReason] = useState('');
   const [autoNote, setAutoNote] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (id && rec.data) setDraft({ ...(rec.data as unknown as Record<string, unknown>) });
@@ -78,6 +79,7 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
   const save = async (opts?: { silent?: boolean }) => {
     const v = validateRecord(entity, draft);
     setErrors(v);
+    if (noteError) { setSaveError({ message: noteError, conflict: false }); return; }
     if (Object.keys(v).length || blockIssues.length) { setSaveError({ message: 'יש שדות שדורשים תיקון.', conflict: false }); return; }
     setBusy(true); setSaveError(null);
     try {
@@ -205,6 +207,15 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
           {entity === 'content' && content && (
             <>
               <TopicsPicker value={content.topicIds ?? []} onChange={(v) => set('topicIds', v)} />
+              <LessonNotesEditor
+                key={String(current?.version ?? 'new')}
+                chapters={Array.isArray(content.chapters) ? content.chapters as MediaChapter[] : []}
+                transcript={typeof draft.transcript === 'string' ? draft.transcript : null}
+                onChapters={(v) => set('chapters', v)}
+                onTranscript={(v) => set('transcript', v)}
+                onError={setNoteError}
+                readOnly={readOnly}
+              />
               {(content.type === 'book' || content.type === 'leaflet') && <BookDetailsEditor value={content.bookDetails} onChange={(v) => set('bookDetails', v)} />}
               {id && current && <SourcesEditor item={current as ContentItem} onSaved={rec.reload} />}
             </>

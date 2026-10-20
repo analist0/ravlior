@@ -3,7 +3,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/[...route]" }, { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }],
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/[...route]" }, { "source": "/((?!api/|assets/).*)", "destination": "/" }],
   "headers": [
     {
       "source": "/(.*)",

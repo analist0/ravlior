@@ -6,9 +6,10 @@ import { Badge, Button, Checkbox, IconButton, Notice, SelectField, TextArea, Tex
 import { useToast } from '../components/Toast.tsx';
 import { useConfirm } from '../components/Dialog.tsx';
 import { BLOCK_LABEL, BLOCK_TYPES, emptyBlock, sanitizeBlocks } from '../shared/blocks.ts';
+import { chaptersToText, cleanTranscript, parseChapterLines } from '../shared/lesson.ts';
 import { canonicalizeUrl, detectProvider, youtubeId } from '../shared/media.ts';
 import { blocksToWriting, bookOffers, revisionDiff, writingToBlocks } from '../shared/sections.ts';
-import type { Block, BookDetails, ContentItem, MediaSource } from '../shared/types.ts';
+import type { Block, BookDetails, ContentItem, MediaChapter, MediaSource } from '../shared/types.ts';
 
 function MediaPicker({ onPick }: { onPick: (src: string) => void }) {
   const repo = useRepo();
@@ -369,4 +370,54 @@ export function UrlsField({ label, value, onChange, error }: { label: string; va
 
 export function StatusHelp() {
   return <Notice>תהליך: טיוטה → בבדיקה → מאושר → פורסם → ארכיון. עורך שולח לבדיקה; בודק/הרב/מנהל מאשרים ומפרסמים. המסד אוכף את המעברים.</Notice>;
+}
+
+/** Chapters and transcript are optional and must come from the lesson itself. */
+export function LessonNotesEditor({
+  chapters, transcript, onChapters, onTranscript, onError, readOnly = false,
+}: {
+  chapters: MediaChapter[];
+  transcript: string | null;
+  onChapters: (v: MediaChapter[]) => void;
+  onTranscript: (v: string | null) => void;
+  onError: (msg: string | null) => void;
+  readOnly?: boolean;
+}) {
+  const [text, setText] = useState(() => chaptersToText(chapters));
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section className="panel" aria-labelledby="h-notes">
+      <h2 id="h-notes">פרקים ותמליל</h2>
+      <p className="soft">רק טקסט אמיתי מהשיעור. אם אין — השאירו ריק. אין לנסח תקציר או חותמות זמן שלא נשמעו.</p>
+      <TextArea
+        label="פרקים"
+        hint="שורה לכל פרק: 12:40 | כותרת מהשיעור"
+        value={text}
+        error={error ?? undefined}
+        readOnly={readOnly}
+        onChange={(e) => {
+          const next = e.target.value;
+          setText(next);
+          if (!next.trim()) { setError(null); onError(null); onChapters([]); return; }
+          const parsed = parseChapterLines(next);
+          if (!parsed.ok) { setError(parsed.error); onError(parsed.error); return; }
+          setError(null); onError(null); onChapters(parsed.chapters);
+        }}
+        style={{ minHeight: 120 }}
+      />
+      <TextArea
+        label="תמליל"
+        hint="טקסט בלבד, בלי תגיות. עד 20,000 תווים."
+        value={transcript ?? ''}
+        readOnly={readOnly}
+        onChange={(e) => {
+          const cleaned = cleanTranscript(e.target.value);
+          if (!cleaned.ok) { onError(cleaned.error); return; }
+          onError(null);
+          onTranscript(cleaned.transcript);
+        }}
+        style={{ minHeight: 140 }}
+      />
+    </section>
+  );
 }

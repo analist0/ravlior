@@ -38,6 +38,12 @@ export interface Provenance {
   note?: string; // original remark, verbatim
 }
 
+/** A real timestamp from the recording. Never invented by the client. */
+export interface MediaChapter {
+  t: number;
+  label: string;
+}
+
 export interface MediaSource {
   id: string;
   contentId: string;
@@ -76,6 +82,10 @@ export interface ContentItem {
   sourcePublishedDate: string | null;
   durationSeconds: number | null;
   durationText: string | null;
+  /** Optional. Empty unless a real chapter list was entered. */
+  chapters?: MediaChapter[];
+  /** Optional plain text. Null unless a real transcript exists. */
+  transcript?: string | null;
   status: ContentStatus;
   publishedAt: string | null;
   featured: boolean;
@@ -287,12 +297,22 @@ export type Block =
   | { type: 'related'; contentIds: string[] }
   | { type: 'cta'; label: string; href: string };
 
+export type HallMode = 'watch' | 'listen';
+export type LengthBucket = 'short' | 'medium' | 'long' | 'unknown';
+export type DatedFilter = 'known' | 'unknown';
+
 export interface ContentQuery {
   q?: string;
   type?: ContentType | '';
   topic?: string;
   series?: string;
   provider?: MediaProvider | '';
+  /** watch = video, short, live. listen = audio. */
+  hall?: HallMode | '';
+  /** short < 10 min, medium < 40 min, long, or duration unknown. */
+  length?: LengthBucket | '';
+  /** known = event date or source publish date. Site publish time does not count. */
+  dated?: DatedFilter | '';
   sort?: 'newest' | 'oldest' | 'title' | 'duration';
   page?: number;
   pageSize?: number;

@@ -42,7 +42,7 @@ export const DEFAULT_PAGES: Omit<Page, 'id'>[] = [
 
 export const DEFAULT_MENUS: Omit<Menu, 'id'>[] = [
   { location: 'header', version: 1, items: [
-    { label: 'ספרייה', href: '/library' }, { label: 'סדרות', href: '/series' }, { label: 'נושאים', href: '/topics' },
+    { label: 'אודיטוריום', href: '/watch' }, { label: 'ספרייה', href: '/library' }, { label: 'סדרות', href: '/series' }, { label: 'נושאים', href: '/topics' },
     { label: 'ספרים ועלונים', href: '/books' }, { label: 'שו״ת', href: '/responsa' }, { label: 'הרב והמוסדות', href: '/about' },
   ] },
   { location: 'footer', version: 1, items: [

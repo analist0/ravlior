@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
 import { useLibraryState } from '../app/library-state.tsx';
-import { Link } from '../app/router.tsx';
+import { Link, useSearchParams } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { BlockRenderer } from '../components/Blocks.tsx';
 import { ReadingProgress, ReadingTools } from '../components/Reading.tsx';
@@ -12,7 +12,8 @@ import { usePlayer } from '../player/PlayerProvider.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, TYPE_LABEL, formatHebDate, splitTitle } from '../components/ui.tsx';
 import { NotFound } from './NotFound.tsx';
-import type { AttributionStatus, ContentItem, MediaSource } from '../shared/types.ts';
+import { lessonJsonLd, parseTimestamp } from '../shared/lesson.ts';
+import type { AttributionStatus, ContentItem, MediaSource, Series } from '../shared/types.ts';
 
 const ATTRIBUTION: Record<AttributionStatus, string> = {
   title_names_rabbi: 'כותרת הפרסום מציינת את הרב ליאור כהן',
@@ -68,13 +69,37 @@ export default function ItemPage({ params }: { params: Record<string, string> })
   const toast = useToast();
   const articleRef = useRef<HTMLElement>(null);
   const [readingScale, setReadingScale] = useState(1);
+  const [search] = useSearchParams();
+  const startAt = parseTimestamp(search.get('t'));
   const r = useAsync(() => repo.getContent(params.slug ?? ''), [params.slug]);
   const item = r.data;
   const topics = useAsync(() => repo.listTopics(), [repo]);
   const series = useAsync(() => repo.listSeries(), [repo]);
   const related = useAsync(() => (item ? repo.related(item, 8) : Promise.resolve([])), [item?.id]);
+  const nextRef = useMemo(() => {
+    if (!item) return null;
+    for (const s of series.data ?? []) {
+      const i = s.items.indexOf(item.id);
+      const nextId = s.items[i + 1];
+      if (i >= 0 && nextId) return { series: s, nextId };
+    }
+    return null;
+  }, [item, series.data]);
+  const nextLesson = useAsync(() => (nextRef ? repo.getContentByIds([nextRef.nextId]) : Promise.resolve([])), [nextRef?.nextId, repo]);
   const [main, sub] = item ? splitTitle(item.title) : ['', null];
   const origin = SITE_URL || location.origin;
+  const jsonLd = useMemo(() => {
+    if (!item || item.status !== 'published') return null;
+    const page = SITE_URL ? `${SITE_URL}/item/${item.slug}` : null;
+    const crumb = page ? {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'אודיטוריום', item: `${SITE_URL}/watch` },
+        { '@type': 'ListItem', position: 2, name: main, item: page },
+      ],
+    } : null;
+    return lessonJsonLd(item, main, page, crumb);
+  }, [item, main]);
   useHead({
     title: main,
     description: item ? (item.summary ?? sub ?? `${TYPE_LABEL[item.type]} — ${main}`).slice(0, 180) : null,
@@ -82,7 +107,7 @@ export default function ItemPage({ params }: { params: Record<string, string> })
     image: item ? thumbFor(item) : null,
     type: item?.type === 'video' || item?.type === 'short' ? 'video.other' : 'article',
     noindex: item ? item.status !== 'published' : false,
-    jsonLd: item && TEXT_TYPES.has(item.type) ? {
+    jsonLd: jsonLd ?? (item && TEXT_TYPES.has(item.type) ? {
       '@context': 'https://schema.org',
       '@type': 'Article',
       headline: main,
@@ -90,7 +115,7 @@ export default function ItemPage({ params }: { params: Record<string, string> })
       description: (item.summary ?? sub ?? main).slice(0, 180),
       ...(item.speaker ? { author: { '@type': 'Person', name: item.speaker } } : {}),
       mainEntityOfPage: `${origin}/item/${item.slug}`,
-    } : undefined,
+    } : undefined),
   });
 
   if (r.loading) return <div className="container section"><Skeleton h={320} /><div style={{ height: 16 }} /><Skeleton h={32} w="60%" /></div>;
@@ -110,11 +135,11 @@ export default function ItemPage({ params }: { params: Record<string, string> })
     <article className={isText ? 'text-item' : undefined} ref={isText ? articleRef : undefined} style={isText ? { ['--reading-scale' as string]: readingScale } : undefined}>
       {isText && <ReadingProgress target={articleRef} />}
       <div className="container">
-      <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'ספרייה', to: '/library' }, { label: TYPE_LABEL[item.type], to: `/library?type=${item.type}` }, { label: main }]} />
+      <Breadcrumbs items={isText ? [{ label: 'בית', to: '/' }, { label: 'ספרייה', to: '/library' }, { label: TYPE_LABEL[item.type], to: `/library?type=${item.type}` }, { label: main }] : [{ label: 'בית', to: '/' }, { label: 'אודיטוריום', to: '/watch' }, { label: TYPE_LABEL[item.type], to: `/watch?hall=${item.type === 'audio' ? 'listen' : 'watch'}&type=${item.type}` }, { label: main }]} />
       {item.status !== 'published' && <Notice tone="warn" icon="lock">פריט זה אינו מפורסם ({item.status}). הוא מוצג לך כחבר צוות בלבד.</Notice>}
       <div className="item-layout" style={{ marginTop: 'var(--s-4)' }}>
         <div>
-          {mode !== 'none' && <MediaPlayer item={item} />}
+          {mode !== 'none' && <MediaPlayer item={item} startAt={startAt} notes />}
           <header style={{ marginTop: 'var(--s-6)' }}>
             <div className="row" style={{ marginBottom: 'var(--s-3)' }}>
               <Badge tone="accent">{TYPE_LABEL[item.type]}</Badge>
@@ -137,6 +162,12 @@ export default function ItemPage({ params }: { params: Record<string, string> })
             {track && <Button variant="secondary" icon="queue" onClick={() => { player.enqueue(track); toast('נוסף לתור'); }}>הוספה לתור</Button>}
             {isText && <ReadingTools scale={readingScale} onScale={setReadingScale} />}
           </div>
+          {nextLesson.data?.[0] && nextRef && (
+            <p className="next-lesson">
+              <span className="soft">הבא ב{nextRef.series.title}</span>
+              <Link to={`/item/${nextLesson.data[0].slug}`}>{splitTitle(nextLesson.data[0].title)[0]}</Link>
+            </p>
+          )}
           {isText ? (
             <div className="torah-sheet">
               {item.summary && item.summary !== main && <p className="lede" style={{ fontSize: 'var(--step-1)' }}>{item.summary}</p>}
@@ -200,7 +231,6 @@ export default function ItemPage({ params }: { params: Record<string, string> })
           <CardGrid items={others.slice(0, 8)} />
         </section>
       )}
-      <p className="soft" style={{ marginTop: 'var(--s-6)' }}><Icon name="info" /> כתוביות ופרקים מוצגים רק כשקיים להם מקור אמיתי. לפריט זה לא נוספו.</p>
       </div>
     </article>
   );

@@ -1,7 +1,44 @@
 import { useHead } from '../app/head.ts';
+import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
-import { CardGrid } from '../components/Media.tsx';
-import { Breadcrumbs, CardSkeletons, EmptyState, ErrorState, Notice } from '../components/ui.tsx';
+import { Badge, Breadcrumbs, CardSkeletons, EmptyState, ErrorState, Notice, splitTitle } from '../components/ui.tsx';
+import { bookOffers } from '../shared/sections.ts';
+import type { ContentItem } from '../shared/types.ts';
+
+function Shelf({ title, id, items, loading, error, onRetry }: { title: string; id: string; items: ContentItem[] | undefined; loading: boolean; error: Error | null; onRetry: () => void }) {
+  return (
+    <section className="section" aria-labelledby={id} style={{ paddingBlock: 'var(--s-6)' }}>
+      <h2 id={id}>{title}</h2>
+      {error && <ErrorState error={error} onRetry={onRetry} />}
+      {loading && <CardSkeletons n={3} />}
+      {items && items.length === 0 && <EmptyState icon="read" title="אין פריטים עדיין" />}
+      {items && items.length > 0 && (
+        <div className="book-shelf">
+          {items.map((item) => {
+            const [main, sub] = splitTitle(item.title);
+            const offers = bookOffers(item.bookDetails);
+            return (
+              <Link key={item.id} to={`/books/${item.slug}`} className="book-card">
+                <span className="book-spine" aria-hidden="true" />
+                <span>
+                  <h3>{main}</h3>
+                  {sub && <p className="muted" style={{ margin: '0 0 var(--s-2)' }}>{sub}</p>}
+                  {item.summary && <p className="soft" style={{ margin: 0 }}>{item.summary}</p>}
+                  <span className="row" style={{ marginTop: 'var(--s-2)', gap: 6 }}>
+                    {item.bookDetails?.authoredByRabbi === false && <Badge tone="warn">לא מיוחס לרב כמחבר</Badge>}
+                    {item.bookDetails?.authoredByRabbi && <Badge tone="accent">מיוחס לרב לפי המקור</Badge>}
+                    {offers.purchase && <Badge>יש קישור רכישה</Badge>}
+                    {offers.donation && <Badge>יש קישור תרומה</Badge>}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function BooksPage() {
   const repo = useRepo();
@@ -9,25 +46,17 @@ export default function BooksPage() {
   const leaflets = useAsync(() => repo.listContent({ type: 'leaflet', pageSize: 100 }), [repo]);
   const articles = useAsync(() => repo.listContent({ type: 'article', pageSize: 100 }), [repo]);
   useHead({ title: 'ספרים, עלונים ודברי תורה', description: 'ספרים וקונטרסים הקשורים לרב ליאור כהן ולמורשת מרן הרב מאזוז, עלונים ודברי תורה כתובים — עם פרטי מקור מדויקים.', path: '/books' });
-  const block = (title: string, r: typeof books, id: string) => (
-    <section className="section" aria-labelledby={id} style={{ paddingBlock: 'var(--s-6)' }}>
-      <h2 id={id}>{title}</h2>
-      {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
-      {r.loading && <CardSkeletons n={3} />}
-      {r.data && (r.data.items.length ? <CardGrid items={r.data.items} view="list" /> : <EmptyState icon="read" title="אין פריטים עדיין" />)}
-    </section>
-  );
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'ספרים ועלונים' }]} />
       <h1>ספרים, עלונים ודברי תורה</h1>
       <Notice>
         לא אותרה רשימה מאומתת של ספרים שחיבר הרב. „ימי מלך — שיחות הרב” ידוע מדיווח בלבד, וקובץ מלא שלו לא אותר.
-        „ימי מלך” הקונטרס המשפחתי הוא פרסום אחר ואינו מחיבורי הרב. קבצים מוצגים לעיון רק כשיש לכך הרשאה.
+        „ימי מלך” הקונטרס המשפחתי הוא פרסום אחר ואינו מחיבורי הרב. תוכן עניינים, קטע לקריאה וקישורי רכישה או תרומה מוצגים רק אם נשמרו בפריט.
       </Notice>
-      {block('ספרים וקונטרסים', books, 'h-books')}
-      {block('עלונים (PDF באתרי המקור)', leaflets, 'h-leaflets')}
-      {block('דברי תורה כתובים', articles, 'h-articles')}
+      <Shelf title="ספרים וקונטרסים" id="h-books" items={books.data?.items} loading={books.loading} error={books.error} onRetry={books.reload} />
+      <Shelf title="עלונים (PDF באתרי המקור)" id="h-leaflets" items={leaflets.data?.items} loading={leaflets.loading} error={leaflets.error} onRetry={leaflets.reload} />
+      <Shelf title="דברי תורה כתובים" id="h-articles" items={articles.data?.items} loading={articles.loading} error={articles.error} onRetry={articles.reload} />
     </div>
   );
 }

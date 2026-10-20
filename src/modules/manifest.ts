@@ -59,7 +59,7 @@ export const MODULES: ModuleManifest[] = [
   },
   {
     id: 'books', version: '1.0.0', name: 'ספרים ועלונים', description: 'ספרים, קונטרסים ועלונים עם פרטי מקור.',
-    dependsOn: ['library'], routes: ['/books'], adminSections: [], navigation: [{ label: 'ספרים ועלונים', href: '/books' }],
+    dependsOn: ['library'], routes: ['/books', '/books/:slug'], adminSections: [], navigation: [{ label: 'ספרים ועלונים', href: '/books' }],
     permissions: [{ action: 'books.edit', roles: EDIT }], settings: [], migrations: CORE_SQL,
     featureFlag: 'module.books', enabledByDefault: true,
   },
@@ -81,7 +81,7 @@ export const MODULES: ModuleManifest[] = [
   },
   {
     id: 'institutions', version: '1.0.0', name: 'מוסדות ופעילות', description: 'מוסדות, קהילות וארכיון פעילות מתועדת.',
-    dependsOn: [], routes: ['/institutions'], adminSections: [{ id: 'institutions', label: 'מוסדות' }, { id: 'events', label: 'אירועים' }],
+    dependsOn: [], routes: ['/institutions', '/events'], adminSections: [{ id: 'institutions', label: 'מוסדות' }, { id: 'events', label: 'אירועים' }],
     navigation: [{ label: 'מוסדות', href: '/institutions' }],
     permissions: [{ action: 'institutions.edit', roles: EDIT }], settings: [], migrations: CORE_SQL,
     featureFlag: 'module.institutions', enabledByDefault: true,

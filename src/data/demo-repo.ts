@@ -10,6 +10,7 @@ import { validateUpdate } from '../shared/updates.ts';
 import { previewRows } from '../shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
+import { validateContact } from '../shared/sections.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
 import { applyAnswerEdit, applyPublicEdit, buildPublicFromApproved } from '../shared/responsa.ts';
 import { slugify } from '../shared/hebrew.ts';
@@ -20,7 +21,7 @@ import {
 } from '../shared/workflow.ts';
 import { defaultModuleState, MODULES } from '../modules/manifest.ts';
 import type {
-  ContentItem, ContentStatus, EventRecord, HomeSection, Institution, MediaSource, Menu, ModuleState, Page, PageResult,
+  ContactMessage, ContactStatus, ContentItem, ContentStatus, EventRecord, HomeSection, Institution, MediaSource, Menu, ModuleState, Page, PageResult,
   PublicQuestion, QuestionSubmission, Role, SeedData, Series, SourceArchive, Topic,
 } from '../shared/types.ts';
 import type {
@@ -44,6 +45,7 @@ interface DemoDB {
   modules: ModuleState[];
   archives: SourceArchive[];
   questions: QuestionSubmission[];
+  contactMessages: ContactMessage[];
   revisions: (Revision & { entity: string; entityId: string })[];
   audit: AuditEntry[];
   users: StaffUser[];
@@ -91,6 +93,7 @@ async function buildDb(load: SeedLoader): Promise<DemoDB> {
     modules: MODULES.map((m) => ({ id: m.id, enabled: state[m.id] ?? false, settings: Object.fromEntries(m.settings.map((s) => [s.key, s.default])) })),
     archives: seed.archives,
     questions: [],
+    contactMessages: [],
     revisions: [],
     audit: [],
     users: DEMO_USERS,
@@ -100,6 +103,7 @@ async function buildDb(load: SeedLoader): Promise<DemoDB> {
 export async function createDemoRepository(load: SeedLoader = defaultLoader): Promise<Repository> {
   let db: DemoDB = readJSON<DemoDB | null>(DB_KEY, null) ?? (await buildDb(load));
   if (db.schema !== 1) db = await buildDb(load);
+  db.contactMessages ??= [];
   let session: Session | null = readJSON<Session | null>(SESSION_KEY, null);
   const listeners = new Set<(s: Session | null) => void>();
   const blobs = new Map<string, string>(); // demo uploads: path -> object URL (memory only)
@@ -266,6 +270,20 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       return { trackingCode: q.trackingCode, status: q.status, createdAt: q.createdAt, answerText: delivered ? q.answerText : null, publicSlug: pq?.slug ?? null, hasAudio: !!delivered && !!q.answerAudioPath };
     },
 
+    async submitContact(input) {
+      await delay(200);
+      const v = validateContact(input);
+      if (!v.ok) throw new Error(Object.values(v.errors)[0] ?? 'הטופס אינו תקין');
+      const recent = db.contactMessages.filter((m) => Date.now() - Date.parse(m.createdAt) < 60_000).length;
+      if (recent >= 5) throw new Error('נשלחו כמה פניות ברצף. נסו שוב בעוד דקה.');
+      db.contactMessages.unshift({
+        id: uid(), name: v.value.name, email: v.value.email, subject: v.value.subject, body: v.value.body,
+        status: 'new', createdAt: now(), readAt: null,
+      });
+      log('insert', 'contact_messages', db.contactMessages[0]!.id);
+      persist();
+    },
+
     async answerAudioUrl(code, token) {
       const hash = await sha256Hex(token);
       const q = db.questions.find((x) => x.trackingCode === code.toUpperCase() && x.tokenHash === hash);
@@ -325,6 +343,7 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       let rows = table(entity).filter((r) => ('deletedAt' in r ? (opts.view === 'trash' ? r.deletedAt !== null : r.deletedAt === null) : opts.view !== 'trash'));
       if (opts.status) rows = rows.filter((r) => 'status' in r && r.status === opts.status);
       if (opts.type) rows = rows.filter((r) => 'type' in r && r.type === opts.type);
+      if (opts.scheduled) rows = rows.filter((r) => 'publishAt' in r && typeof r.publishAt === 'string' && r.publishAt > new Date().toISOString());
       if (opts.q) rows = rows.filter((r) => heMatches(JSON.stringify([('title' in r && r.title) || '', ('name' in r && r.name) || '', ('questionText' in r && r.questionText) || '', ('slug' in r && r.slug) || '']), opts.q!));
       const sort = opts.sort ?? 'updated';
       const sorted = [...rows].sort((a, b) => {
@@ -455,7 +474,10 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       if (!isAdmin(roles())) throw new PermissionError('יומן הפעולות זמין למנהלים בלבד.');
       const pageSize = 50;
       const q = opts?.q?.trim();
-      const rows = q ? db.audit.filter((a) => heMatches([a.action, a.entity, a.actor ?? '', a.entityId ?? ''].join(' '), q)) : db.audit;
+      const entity = opts?.entity?.trim();
+      let rows = db.audit;
+      if (entity) rows = rows.filter((a) => a.entity === entity);
+      if (q) rows = rows.filter((a) => heMatches([a.action, a.entity, a.actor ?? '', a.entityId ?? '', JSON.stringify(a.meta)].join(' '), q));
       return clone({ items: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize });
     },
     async listMedia(opts) {
@@ -788,6 +810,26 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     },
     async probeUrl() {
       throw new Error('בדיקת קישור מתבצעת בשרת ה-Node, שאינו פעיל במצב הדגמה.');
+    },
+    async listContacts(opts) {
+      requireStaff();
+      if (!roles().some((r) => r === 'owner' || r === 'admin' || r === 'editor' || r === 'reviewer')) throw new PermissionError('תיבת הפניות שמורה לעורכים ומנהלים.');
+      const page = Math.max(1, opts.page ?? 1);
+      const pageSize = opts.pageSize ?? 25;
+      const q = (opts.q ?? '').trim();
+      let items = db.contactMessages.filter((m) => !opts.status || m.status === opts.status);
+      if (q) items = items.filter((m) => heMatches(`${m.subject} ${m.email} ${m.name ?? ''} ${m.body}`, q));
+      return { items: clone(items.slice((page - 1) * pageSize, page * pageSize)), total: items.length, page, pageSize };
+    },
+    async setContactStatus(id, status: ContactStatus) {
+      requireStaff();
+      if (!roles().some((r) => r === 'owner' || r === 'admin' || r === 'editor' || r === 'reviewer')) throw new PermissionError();
+      const row = db.contactMessages.find((m) => m.id === id);
+      if (!row) throw new Error('הפנייה לא נמצאה');
+      row.status = status;
+      row.readAt = status === 'new' ? null : (row.readAt ?? now());
+      log('update', 'contact_messages', id, { to: status });
+      persist();
     },
     async exportAll() {
       requireStaff();

@@ -57,13 +57,21 @@ insert into public.media_sources (content_id, provider, provider_id, url, canoni
 insert into public.question_submissions (id, tracking_code, token_hash, question_text, publish_consent)
   values ('20000000-0000-4000-a000-000000000001', 'TEST-0001',
           encode(extensions.digest('x'||repeat('s', 40), 'sha256'), 'hex'), 'שאלה פרטית לבדיקה בלבד', false);
+insert into public.content_items (id, slug, type, title, status, publish_at) values
+  ('10000000-0000-4000-a000-000000000099', 'future-pub', 'article', 'עתידי', 'published', now() + interval '7 days');
 select pg_temp.back();
+-- Contact intake is inserted by the table owner (API), the same way questions are stored.
+insert into public.contact_messages (email, subject, body) values ('inbox@test.invalid', 'שלום', 'הודעת בדיקה ארוכה מספיק');
 
 -- ——— anon ———
 select pg_temp.act(null, 'app_anon');
 select pg_temp.ok((select count(*) from public.question_submissions) = 0, 'anon cannot read private question submissions');
 select pg_temp.ok((select count(*) from public.content_items where status <> 'published') = 0, 'anon sees published content only');
 select pg_temp.ok(not exists (select 1 from public.content_items where slug = 'test-draft'), 'anon cannot see a draft item');
+select pg_temp.ok(not exists (select 1 from public.content_items where slug = 'future-pub'), 'anon cannot see a published row waiting for publish_at');
+select pg_temp.ok(not exists (select 1 from public.search_content('עתידי') s join public.content_items c on c.id = s.id where c.slug = 'future-pub'),
+  'public search hides a row waiting for publish_at');
+select pg_temp.ok(pg_temp.raises('select count(*) from public.contact_messages'), 'anon has no privilege on contact messages');
 select pg_temp.ok(not exists (select 1 from public.media_sources where url = 'https://example.org/draft'), 'anon cannot see sources of a draft item');
 select pg_temp.ok(pg_temp.raises($$insert into public.content_items (slug, type, title) values ('x', 'video', 'x')$$), 'anon cannot insert content');
 select pg_temp.ok((select count(*) from public.audit_log) = 0, 'anon cannot read audit log');
@@ -87,6 +95,7 @@ select pg_temp.back();
 -- ——— viewer ———
 select pg_temp.act('00000000-0000-4000-a000-000000000006', 'app_api');
 select pg_temp.ok(exists (select 1 from public.content_items where slug = 'test-draft'), 'viewer (staff) can see drafts');
+select pg_temp.ok((select count(*) from public.contact_messages) = 0, 'viewer cannot read contact messages');
 update public.content_items set title = 'viewer edit' where slug = 'test-draft';
 select pg_temp.ok((select title from public.content_items where slug = 'test-draft') = 'טיוטת בדיקה', 'viewer update is silently filtered by RLS');
 select pg_temp.ok((select count(*) from public.question_submissions) = 0, 'viewer cannot read private questions');
@@ -109,6 +118,9 @@ select pg_temp.ok(exists (select 1 from public.content_items where slug = 'e-dra
 select pg_temp.ok(pg_temp.raises($$insert into public.user_roles (user_id, role) values ('00000000-0000-4000-a000-000000000007', 'editor')$$),
   'editor cannot grant roles');
 select pg_temp.ok((select count(*) from public.audit_log) = 0, 'editor cannot read audit log');
+select pg_temp.ok((select count(*) from public.contact_messages) = 1, 'editor can read contact messages');
+update public.contact_messages set status = 'read' where email = 'inbox@test.invalid';
+select pg_temp.ok((select status from public.contact_messages where email = 'inbox@test.invalid') = 'read', 'editor marks a contact message read');
 select pg_temp.ok(pg_temp.raises($$insert into public.storage_objects (bucket_id, name) values ('public-media', '../etc/passwd.mp3')$$),
   'storage rejects an unsafe path');
 insert into public.storage_objects (bucket_id, name) values ('public-media', '2026/00000000-0000-4000-a000-000000000009/lesson-1.mp3');
@@ -160,6 +172,8 @@ select pg_temp.act('00000000-0000-4000-a000-000000000002', 'app_api');
 select pg_temp.ok((select count(*) from public.audit_log) > 0, 'admin can read the audit log');
 select pg_temp.ok(not exists (select 1 from public.audit_log where meta::text like '%שאלה פרטית%' or meta::text like '%ssss%'),
   'audit log holds no private question text or token material');
+select pg_temp.ok(not exists (select 1 from public.audit_log where entity = 'contact_messages' and (meta::text like '%הודעת בדיקה%' or meta::text like '%inbox@test%')),
+  'contact audit stores status only, not the message body or address');
 delete from public.content_items where slug = 'e-draft';
 select pg_temp.ok(exists (select 1 from public.content_items where slug = 'e-draft'), 'permanent delete requires a prior soft delete');
 update public.content_items set deleted_at = now(), version = 4 where slug = 'e-draft';

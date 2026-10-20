@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useSearchParams } from '../app/router.tsx';
 import { errorMessage, useAsync, useRepo } from '../data/repo.ts';
 import { useConfirm } from '../components/Dialog.tsx';
@@ -6,6 +6,31 @@ import { useToast } from '../components/Toast.tsx';
 import { Button, ErrorState, Notice, Pagination, SelectField, Skeleton, TextField, formatHebDate } from '../components/ui.tsx';
 import { ROLE_LABEL, isAdmin } from '../shared/workflow.ts';
 import { ROLES, type Role } from '../shared/types.ts';
+
+const ROLE_HELP: Record<Role, string> = {
+  owner: 'מעניק כל תפקיד, כולל בעלים. מנהל את האתר ומפרסם.',
+  admin: 'מנהל תוכן ומשתמשים. אינו יכול להעניק תפקיד בעלים.',
+  editor: 'עורך טיוטות ושולח אותן לבדיקה. אינו מפרסם לבד.',
+  reviewer: 'בודק תוכן, מאשר ומפרסם אחרי העריכה.',
+  rabbi: 'מאשר תשובות שניתנות בשמו. אינו מנהל משתמשים.',
+  viewer: 'צפייה בלבד. אינו עורך, ואינו רואה פניות או שאלות פרטיות.',
+};
+
+const AUDIT_ENTITIES: [string, string][] = [
+  ['content', 'תכנים (הדגמה)'],
+  ['content_items', 'תכנים'],
+  ['pages', 'עמודים'],
+  ['institutions', 'מוסדות'],
+  ['events', 'אירועים'],
+  ['series', 'סדרות'],
+  ['topics', 'נושאים'],
+  ['menus', 'תפריטים'],
+  ['homepage_sections', 'מקטעי דף הבית'],
+  ['contact_messages', 'פניות'],
+  ['user_roles', 'תפקידים'],
+  ['publicQuestions', 'שו״ת (הדגמה)'],
+  ['public_questions', 'שו״ת'],
+];
 import { useAdmin } from './AdminApp.tsx';
 import { filterStaff } from './staff-filter.ts';
 
@@ -27,7 +52,15 @@ export function UsersScreen() {
   return (
     <div>
       <h1>משתמשים ותפקידים</h1>
-      <Notice>הרשאות נאכפות במסד (טבלת user_roles ומדיניות RLS). רק בעלים מעניק תפקידי בעלים/מנהל. תפקיד „הרב” מאשר תשובות בשמו.</Notice>
+      <Notice>הרשאות נאכפות במסד (טבלת user_roles ומדיניות RLS). רק בעלים מעניק תפקידי בעלים ומנהל. תפקיד „הרב” מאשר תשובות בשמו.</Notice>
+      <div className="admin-cards" style={{ marginTop: 'var(--s-4)' }}>
+        {ROLES.map((x) => (
+          <article key={x} className="role-card">
+            <strong>{ROLE_LABEL[x]}</strong>
+            <p className="soft" style={{ margin: '6px 0 0' }}>{ROLE_HELP[x]}</p>
+          </article>
+        ))}
+      </div>
       <form className="admin-toolbar" role="search" onSubmit={(e) => e.preventDefault()}>
         <div className="field">
           <TextField label="חיפוש משתמש" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="דוא״ל או שם" />
@@ -78,8 +111,10 @@ export function AuditScreen() {
   const [params, update] = useSearchParams();
   const page = Number(params.get('page') ?? 1) || 1;
   const q = params.get('q') ?? '';
+  const entity = params.get('entity') ?? '';
   const [text, setText] = useState(q);
-  const r = useAsync(() => repo.admin.audit(page, { q }), [page, q]);
+  const [open, setOpen] = useState<string | null>(null);
+  const r = useAsync(() => repo.admin.audit(page, { q, entity }), [page, q, entity]);
   if (!isAdmin(roles)) return <Notice tone="warn" icon="lock">יומן הפעולות זמין למנהלים בלבד.</Notice>;
   return (
     <div>
@@ -89,6 +124,12 @@ export function AuditScreen() {
         <div className="field">
           <label htmlFor="audit-q">חיפוש ביומן</label>
           <input id="audit-q" className="input" type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="פעולה, ישות או משתמש" onBlur={() => text !== q && update({ q: text, page: null })} />
+        </div>
+        <div className="field">
+          <SelectField label="ישות" value={entity} onChange={(e) => update({ entity: e.target.value || null, page: null })}>
+            <option value="">הכול</option>
+            {AUDIT_ENTITIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </SelectField>
         </div>
       </form>
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
@@ -100,13 +141,24 @@ export function AuditScreen() {
               <thead><tr><th>זמן</th><th>משתמש</th><th>פעולה</th><th>ישות</th><th>פרטים</th></tr></thead>
               <tbody>
                 {r.data.items.map((a) => (
-                  <tr key={a.id}>
-                    <td>{formatHebDate(a.createdAt)} <span className="kbd">{new Date(a.createdAt).toLocaleTimeString('he-IL')}</span></td>
-                    <td className="ltr">{a.actor ?? 'מערכת'}</td>
-                    <td>{a.action}</td>
-                    <td className="kbd">{a.entity}</td>
-                    <td className="kbd">{Object.keys(a.meta).length ? JSON.stringify(a.meta) : ''}</td>
-                  </tr>
+                  <Fragment key={a.id}>
+                    <tr>
+                      <td>{formatHebDate(a.createdAt)} <span className="kbd">{new Date(a.createdAt).toLocaleTimeString('he-IL')}</span></td>
+                      <td className="ltr">{a.actor ?? 'מערכת'}</td>
+                      <td>{a.action}</td>
+                      <td className="kbd">{a.entity}</td>
+                      <td>
+                        {Object.keys(a.meta).length ? (
+                          <Button size="sm" variant="ghost" aria-expanded={open === a.id} onClick={() => setOpen(open === a.id ? null : a.id)}>{open === a.id ? 'הסתרה' : 'פרטים'}</Button>
+                        ) : <span className="soft">—</span>}
+                      </td>
+                    </tr>
+                    {open === a.id && (
+                      <tr>
+                        <td colSpan={5}><pre className="kbd" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify({ entityId: a.entityId, meta: a.meta }, null, 2)}</pre></td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

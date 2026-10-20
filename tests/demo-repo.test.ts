@@ -101,3 +101,31 @@ test('roles: editor cannot manage users or modules; admin cannot grant owner', a
   const users = await repo.admin.listUsers();
   await assert.rejects(repo.admin.setRole(users.find((u) => u.roles.includes('viewer'))!.userId, 'owner', true), /בעלים/);
 });
+
+test('scheduled publish stays private, and the contact inbox is role-gated', async () => {
+  localStorage.clear();
+  const repo = await createDemoRepository(load);
+  await repo.submitContact({ name: 'דנה', email: 'dana@example.com', subject: 'שאלה על האתר', body: 'רציתי לשאול על עמוד המוסדות באתר.', website: '', startedAt: Date.now() - 10_000 });
+  await repo.demoSignIn!('viewer');
+  await assert.rejects(repo.admin.listContacts({ status: 'new' }), /פניות|הרשאה/);
+  await repo.demoSignIn!('editor');
+  const inbox = await repo.admin.listContacts({ status: 'new', q: 'מוסדות' });
+  assert.equal(inbox.total, 1);
+  await repo.admin.setContactStatus(inbox.items[0]!.id, 'read');
+  assert.equal((await repo.admin.listContacts({ status: 'read' })).total, 1);
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  const book = (await repo.admin.create('content', { title: 'ספר בדיקה מתוזמן', type: 'book' } as Partial<ContentItem>)) as ContentItem;
+  await repo.admin.update('content', book.id, { publishAt: future } as Partial<ContentItem>, book.version);
+  await repo.admin.transition('content', book.id, 'in_review', book.version + 1);
+  await repo.demoSignIn!('reviewer');
+  const reviewed = (await repo.admin.get('content', book.id)) as ContentItem;
+  await repo.admin.transition('content', book.id, 'approved', reviewed.version);
+  await repo.admin.transition('content', book.id, 'published', reviewed.version + 1);
+  assert.equal((await repo.listContent({ q: 'ספר בדיקה מתוזמן' })).total, 0, 'future publish_at stays off the public list');
+  assert.equal((await repo.admin.list('content', { scheduled: true, type: 'book' })).total, 1);
+  await repo.demoSignIn!('admin');
+  const audit = await repo.admin.audit(1, { entity: 'contact_messages' });
+  assert.ok(audit.total >= 1);
+  assert.ok(audit.items.every((row) => row.entity === 'contact_messages'));
+  assert.equal((await repo.admin.audit(1, { entity: 'menus', q: 'contact_messages' })).total, 0);
+});

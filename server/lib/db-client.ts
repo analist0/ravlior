@@ -62,6 +62,12 @@ export function dbClient(env: ServerEnv): DataClient {
     async allRoles() {
       return asOwner((sql) => sql(`select user_id, role from public.user_roles`)) as Promise<{ user_id: string; role: string }[]>;
     },
+    async insertContact(row) {
+      await asOwner((sql) => sql(
+        `insert into public.contact_messages (name, email, subject, body) values ($1, $2, $3, $4)`,
+        [row.name, row.email, row.subject, row.body],
+      ));
+    },
     async invite(email, invitedBy) {
       const token = newToken();
       const tokenHash = await sha256Hex(token);

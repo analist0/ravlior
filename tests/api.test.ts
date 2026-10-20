@@ -29,13 +29,12 @@ function mockDeps(over: Partial<Deps> = {}) {
       invite: async () => ({ token: 'invite-token', expiresAt: new Date(0).toISOString() }),
       followUp: async () => ({ trackingCode: 'ABCD-EFGH', token: 't'.repeat(43) }),
       attachVoice: async () => undefined,
-});
-
       insertSignup: async (row: { channel: string; contact: string }) => {
         if (rows.some((r) => r.channel === row.channel && r.contact === row.contact)) return 'exists' as const;
         rows.push(row);
         return 'created' as const;
       },
+      insertContact: async (r: Record<string, unknown>) => { rows.push({ kind: 'contact', ...r }); },
     },
     ...over,
   };
@@ -134,6 +133,22 @@ test('updates: stores email or mobile, no send, refuses bots and floods', async 
   const codes = [];
   for (let i = 0; i < 6; i++) codes.push((await handle(post('/api/updates', { ...good, contact: `u${i}@example.com` }), '8.8.8.15', flood.deps)).status);
   assert.deepEqual(codes, [201, 201, 201, 201, 201, 429]);
+});
+
+test('contact: stores the message, refuses bots, and does not fake success offline', async () => {
+  const { deps, rows } = mockDeps();
+  const now = Date.now();
+  deps.now = () => now;
+  const msg = { name: 'דוד', email: 'a@b.co', subject: 'שלום', body: 'פנייה כללית לבדיקת השרת', website: '', startedAt: now - 5000 };
+  const res = await handle(post('/api/contact', msg), '8.8.8.8', deps);
+  assert.equal(res.status, 201);
+  assert.equal(rows.filter((r) => r.kind === 'contact').length, 1);
+  assert.equal((await handle(post('/api/contact', { ...msg, website: 'x' }), '8.8.8.9', deps)).status, 400);
+  assert.equal((await handle(post('/api/contact', { ...msg, email: 'bad' }), '8.8.8.10', deps)).status, 422);
+  const offline = mockDeps({ client: null });
+  offline.deps.env.configured = false;
+  offline.deps.now = () => now;
+  assert.equal((await handle(post('/api/contact', msg), '8.8.8.11', offline.deps)).status, 503);
 });
 
 test('admin users endpoint requires admin/owner', async () => {

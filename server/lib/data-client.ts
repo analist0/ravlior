@@ -20,4 +20,5 @@ export interface DataClient {
   attachVoice: (code: string, token: string, bytes: Uint8Array, mime: string) => Promise<void>;
   /** Owner insert into update_signups. `exists` when the same channel+contact is already stored. */
   insertSignup: (row: { channel: 'email' | 'whatsapp'; contact: string }) => Promise<'created' | 'exists'>;
+  insertContact: (row: { name: string | null; email: string; subject: string; body: string }) => Promise<void>;
 }

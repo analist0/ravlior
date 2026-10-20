@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type Dependency
 import type { SiteHit } from '../shared/site-search.ts';
 import type { UpdateInput } from '../shared/updates.ts';
 import type {
-  Block, ContentItem, ContentQuery, ContentStatus, EventRecord, HomeSection, Institution, Menu, MediaSource, ModuleState,
+  Block, ContactMessage, ContactStatus, ContentItem, ContentQuery, ContentStatus, EventRecord, HomeSection, Institution, Menu, MediaSource, ModuleState,
   Page, PageResult, PublicQuestion, QuestionStatus, QuestionSubmission, Role, Series, SourceArchive, Topic, Verification,
 } from '../shared/types.ts';
 import type { BucketId } from '../shared/upload-policy.ts';
@@ -17,7 +17,7 @@ export type EntityRecord = ContentItem | Topic | Series | Page | Institution | E
 export interface Session { userId: string; email: string; roles: Role[]; demo: boolean }
 
 export type ListSort = 'updated' | 'title' | 'status';
-export interface ListOptions { q?: string; status?: ContentStatus | ''; type?: string; view?: 'active' | 'trash'; page?: number; pageSize?: number; sort?: ListSort }
+export interface ListOptions { q?: string; status?: ContentStatus | ''; type?: string; view?: 'active' | 'trash'; page?: number; pageSize?: number; sort?: ListSort; scheduled?: boolean }
 
 export interface MediaCatalogRow {
   id: string;
@@ -79,7 +79,7 @@ export interface AdminRepo {
   restore(entity: EntityName, id: string, expectedVersion: number): Promise<void>;
   destroy(entity: EntityName, id: string): Promise<void>;
   revisions(entity: EntityName, id: string): Promise<Revision[]>;
-  audit(page: number, opts?: { q?: string }): Promise<PageResult<AuditEntry>>;
+  audit(page: number, opts?: { q?: string; entity?: string }): Promise<PageResult<AuditEntry>>;
 
   listMedia(opts: { q?: string; kind?: string; provider?: string; page?: number; pageSize?: number; sort?: 'title' | 'provider' }): Promise<PageResult<MediaCatalogRow>>;
   /** Removes one source from its content item. The parent item stays. */
@@ -123,6 +123,9 @@ export interface AdminRepo {
   exportAll(): Promise<Record<string, unknown>>;
   /** Server-side, SSRF-guarded metadata probe of a direct media URL (staff only). */
   probeUrl(url: string): Promise<Record<string, unknown>>;
+
+  listContacts(opts: { status?: ContactStatus | ''; q?: string; page?: number; pageSize?: number }): Promise<PageResult<ContactMessage>>;
+  setContactStatus(id: string, status: ContactStatus): Promise<void>;
 }
 
 export interface Repository {
@@ -158,6 +161,8 @@ export interface Repository {
   trackQuestion(code: string, token: string): Promise<TrackResult | null>;
   /** Short-lived signed URL for a delivered voice answer (verified by code + token on the server). */
   answerAudioUrl(code: string, token: string): Promise<string>;
+  /** General contact form. Stored for the staff inbox. Not a halachic question. */
+  submitContact(input: { name: string | null; email: string; subject: string; body: string; website: string; startedAt: number }): Promise<void>;
 
   getSession(): Promise<Session | null>;
   onAuthChange(cb: (s: Session | null) => void): () => void;

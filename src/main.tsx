@@ -13,6 +13,7 @@ import './styles/base.css';
 import './styles/components.css';
 import './styles/experience.css';
 import './styles/admin.css';
+import './styles/sections.css';
 import { App } from './app/App.tsx';
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

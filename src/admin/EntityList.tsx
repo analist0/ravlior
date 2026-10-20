@@ -31,6 +31,8 @@ export default function EntityList({ entity }: { entity: EntityName }) {
   const [text, setText] = useState(q);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [inline, setInline] = useState<{ id: string; value: string } | null>(null);
+  const titleKey = entity === 'topics' || entity === 'institutions' ? 'name' : entity === 'publicQuestions' ? null : 'title';
   const r = useAsync(() => repo.admin.list(entity, { q, status, type, view, page, pageSize: 25, sort }), [entity, q, status, type, view, page, sort]);
   const items = r.data?.items ?? [];
   const allSelected = items.length > 0 && items.every((i) => selected.has(i.id));
@@ -154,7 +156,25 @@ export default function EntityList({ entity }: { entity: EntityName }) {
               {items.map((i: EntityRecord) => (
                 <tr key={i.id} aria-selected={selected.has(i.id)}>
                   <td><input type="checkbox" aria-label={`בחירה: ${cfg.titleOf(i)}`} checked={selected.has(i.id)} onChange={() => { const n = new Set(selected); if (n.has(i.id)) n.delete(i.id); else n.add(i.id); setSelected(n); }} /></td>
-                  <td className="title-cell"><Link to={`/admin/${cfg.route}/${i.id}`}>{cfg.titleOf(i) || '(ללא כותרת)'}</Link></td>
+                  <td className="title-cell">
+                    {inline?.id === i.id && titleKey ? (
+                      <input className="input" aria-label={`עריכת כותרת: ${cfg.titleOf(i)}`} value={inline.value} autoFocus
+                        onChange={(e) => setInline({ id: i.id, value: e.target.value })}
+                        onBlur={() => {
+                          const value = inline.value.trim();
+                          setInline(null);
+                          if (!value || value === cfg.titleOf(i)) return;
+                          void repo.admin.update(entity, i.id, { [titleKey]: value } as Partial<EntityRecord>, i.version).then(() => { toast('הכותרת נשמרה'); r.reload(); }, (e) => toast(errorMessage(e), { tone: 'error' }));
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setInline(null); }}
+                      />
+                    ) : (
+                      <span className="row" style={{ gap: 6 }}>
+                        <Link to={`/admin/${cfg.route}/${i.id}`}>{cfg.titleOf(i) || '(ללא כותרת)'}</Link>
+                        {titleKey && canEdit(roles) && <button type="button" className="icon-btn" aria-label={`עריכה מהירה: ${cfg.titleOf(i)}`} onClick={() => setInline({ id: i.id, value: cfg.titleOf(i) })}><span aria-hidden="true">✎</span></button>}
+                      </span>
+                    )}
+                  </td>
                   {entity === 'content' && 'type' in i && <td>{TYPE_LABEL[i.type as ContentType]}</td>}
                   <td>{'status' in i && <StatusBadge status={i.status as ContentStatus} />}</td>
                   <td className="kbd">v{i.version}</td>

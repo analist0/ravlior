@@ -1,0 +1,46 @@
+/* Books, events, institutions — uses design tokens only. */
+.section-lead { max-width: var(--maxw-text); color: var(--text-muted); }
+.book-shelf { display: grid; gap: var(--s-3); }
+.book-card {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: var(--s-4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3);
+  padding: var(--s-4); text-decoration: none; color: inherit; min-height: var(--tap);
+}
+.book-card:hover { border-color: var(--accent); box-shadow: var(--shadow-2); }
+.book-spine { border-radius: var(--r-1); background: linear-gradient(180deg, var(--gold), var(--accent)); }
+.book-card h2, .book-card h3 { margin: 0 0 var(--s-1); font-size: var(--step-1); }
+.book-layout { display: grid; gap: var(--s-6); }
+@media (min-width: 960px) { .book-layout { grid-template-columns: 240px minmax(0, 1fr); align-items: start; } }
+.book-toc { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-4); }
+@media (min-width: 960px) { .book-toc { position: sticky; top: calc(var(--header-h) + var(--s-4)); } }
+.book-toc ol { margin: 0; padding-inline-start: 1.2rem; display: grid; gap: var(--s-2); }
+.reading { background: var(--bg-elevated); border-inline-start: 3px solid var(--gold); padding: var(--s-4) var(--s-5); border-radius: var(--r-2); }
+.meta-dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--s-2) var(--s-4); margin: 0; }
+.meta-dl dt { color: var(--text-muted); }
+.meta-dl dd { margin: 0; }
+.inst-grid { display: grid; gap: var(--s-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.inst-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-5); display: grid; gap: var(--s-2); align-content: start; }
+.inst-card h3 { margin: 0; }
+.about-layout { display: grid; gap: var(--s-6); }
+@media (min-width: 900px) { .about-layout { grid-template-columns: minmax(0, 1fr) 260px; align-items: start; } }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-dow { text-align: center; color: var(--text-muted); font-size: var(--step--1); padding-block: var(--s-1); }
+.cal-day {
+  min-height: 72px; border: 1px solid var(--border); border-radius: var(--r-1); background: var(--surface);
+  padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; text-align: start;
+}
+.cal-day[data-out='true'] { opacity: 0.45; }
+.cal-day[data-today='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.cal-day strong { font-size: var(--step--1); }
+.cal-day small { color: var(--text-soft); font-size: 0.75rem; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+.event-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-3); }
+.event-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-4); display: grid; gap: var(--s-2); }
+[data-drag='over'] { outline: 2px solid var(--accent); }
+.diff-table td { vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-before { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+.diff-after { background: color-mix(in srgb, var(--success) 14%, var(--surface)); }
+.role-grid { display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); margin-bottom: var(--s-4); }
+.role-card { border: 1px solid var(--border); border-radius: var(--r-2); padding: var(--s-3); background: var(--surface); }
+.write-box { min-height: 220px; line-height: 1.8; font-size: var(--step-0); }

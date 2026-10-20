@@ -6,7 +6,7 @@ import { safeUrl } from '../shared/blocks.ts';
 export interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'number' | 'urls' | 'blocks' | 'csv' | 'ref-institution' | 'ref-topic' | 'ref-category';
+  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'datetime' | 'number' | 'urls' | 'blocks' | 'csv' | 'ref-institution' | 'ref-topic' | 'ref-category';
   options?: [string, string][];
   required?: boolean;
   hint?: string;
@@ -50,6 +50,7 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
       { key: 'verification', label: 'מצב אימות', type: 'select', options: [['located', 'אותר'], ['archive', 'ארכיון'], ['candidate', 'מועמד — טעון בדיקה'], ['historical', 'היסטורי'], ['blocked', 'חסום']] },
       { key: 'featured', label: 'להציג כשיעור נבחר', type: 'checkbox' },
       { key: 'body', label: 'תוכן בבלוקים', type: 'blocks', full: true },
+      { key: 'publishAt', label: 'פרסום מתוזמן', type: 'datetime', hint: 'ריק = גלוי מיד כשהסטטוס „פורסם”. זמן עתידי מסתיר את הפריט עד אז.' },
     ],
   },
   topics: {
@@ -88,6 +89,7 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
       { key: 'slug', label: 'כתובת (slug)', type: 'text', dir: 'ltr', required: true },
       { key: 'description', label: 'תיאור למנועי חיפוש', type: 'textarea', full: true },
       { key: 'blocks', label: 'תוכן', type: 'blocks', full: true },
+      { key: 'publishAt', label: 'פרסום מתוזמן', type: 'datetime', hint: 'ריק = גלוי מיד עם הפרסום.' },
     ],
   },
   institutions: {
@@ -100,6 +102,9 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
       { key: 'slug', label: 'כתובת (slug)', type: 'text', dir: 'ltr', hint: SLUG_HINT },
       { key: 'description', label: 'תיאור (מגובה מקורות)', type: 'textarea', full: true },
       { key: 'sourceUrls', label: 'קישורי מקור (שורה לכל קישור)', type: 'urls', full: true },
+      { key: 'placeLabel', label: 'מקום', type: 'text', hint: 'רק שם מקום שאומת. ריק = לא מוצג.' },
+      { key: 'mapUrl', label: 'קישור מפה', type: 'text', dir: 'ltr', hint: 'https בלבד. ריק = אין מפה.' },
+      { key: 'publishAt', label: 'פרסום מתוזמן', type: 'datetime' },
     ],
   },
   events: {
@@ -115,6 +120,11 @@ export const ENTITIES: Record<EntityName, EntityConfig> = {
       { key: 'dateText', label: 'תאריך כטקסט', type: 'text' },
       { key: 'summary', label: 'תקציר', type: 'textarea', full: true },
       { key: 'sourceUrls', label: 'קישורי מקור', type: 'urls', full: true },
+      { key: 'locationLabel', label: 'מקום', type: 'text', hint: 'רק אם צוין במקור או אומת.' },
+      { key: 'mapUrl', label: 'קישור מפה', type: 'text', dir: 'ltr', hint: 'https בלבד.' },
+      { key: 'startsAt', label: 'התחלה', type: 'datetime' },
+      { key: 'endsAt', label: 'סיום', type: 'datetime' },
+      { key: 'publishAt', label: 'פרסום מתוזמן', type: 'datetime' },
     ],
   },
   publicQuestions: {
@@ -147,7 +157,7 @@ export function validateRecord(entity: EntityName, data: Record<string, unknown>
       const bad = v.filter((u) => typeof u !== 'string' || !safeUrl(u) || !u.startsWith('https://'));
       if (bad.length) errors[f.key] = `קישורים לא תקינים (נדרש https): ${bad.join(', ')}`;
     }
-    if (f.key === 'sourceUrl' && typeof v === 'string' && v && !v.startsWith('https://')) errors[f.key] = 'נדרש קישור https';
+    if ((f.key === 'sourceUrl' || f.key === 'mapUrl') && typeof v === 'string' && v && !v.startsWith('https://')) errors[f.key] = 'נדרש קישור https';
     if (f.key === 'durationText' && typeof v === 'string' && v && !/^\d+:\d{2}(:\d{2})?$/.test(v)) errors[f.key] = 'פורמט: דקות:שניות או שעות:דקות:שניות';
   }
   if (entity === 'series' && data.kind === 'source' && !data.sourceUrl) errors.sourceUrl = 'פלייליסט מקור מחייב קישור';

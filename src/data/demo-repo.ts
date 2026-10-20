@@ -5,6 +5,8 @@
 import { readJSON, removeKey, writeJSON } from '../app/storage.ts';
 import { DEFAULT_HOME, DEFAULT_MENUS, DEFAULT_PAGES } from '../shared/defaults.ts';
 import { heMatches } from '../shared/hebrew.ts';
+import { mergeNav, pageHref, searchDocs, type SiteDoc } from '../shared/site-search.ts';
+import { validateUpdate } from '../shared/updates.ts';
 import { previewRows } from '../shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
@@ -139,6 +141,30 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     async listContent(q) {
       await delay();
       return clone(applyQuery(db.content, q, db.topics, db.series));
+    },
+    async searchSite(q) {
+      const docs: SiteDoc[] = [
+        ...pub(db.content).map((c) => ({
+          kind: 'content' as const, id: c.id, title: c.title, extra: `${c.summary ?? ''} ${c.speaker ?? ''}`,
+          href: `/item/${c.slug}`, label: c.type,
+        })),
+        ...pub(db.topics).map((t) => ({ kind: 'topic' as const, id: t.id, title: t.name, extra: t.description ?? '', href: `/topics/${t.slug}`, label: 'topic' })),
+        ...pub(db.series).map((s) => ({ kind: 'series' as const, id: s.id, title: s.title, extra: s.description ?? '', href: `/series/${s.slug}`, label: 'series' })),
+        ...pub(db.pages).map((p) => ({ kind: 'page' as const, id: p.id, title: p.title, extra: p.description ?? '', href: pageHref(p.slug), label: 'page' })),
+        ...pub(db.institutions).map((i) => ({ kind: 'institution' as const, id: i.id, title: i.name, extra: i.description ?? '', href: '/institutions', label: 'institution' })),
+      ];
+      return mergeNav(searchDocs(docs, q, 12), q);
+    },
+    async subscribeUpdates(input) {
+      const v = validateUpdate(input);
+      if (!v.ok) throw new Error(Object.values(v.errors)[0] ?? 'הטופס אינו תקין');
+      const key = 'site-updates.v1';
+      const rows = readJSON<{ channel: string; contact: string }[]>(key, []);
+      if (!rows.some((r) => r.channel === v.value.channel && r.contact === v.value.contact)) {
+        rows.push(v.value);
+        writeJSON(key, rows);
+      }
+      return { ok: true as const };
     },
     async getContent(slug) {
       const c = db.content.find((x) => x.slug === slug);

@@ -18,4 +18,6 @@ export interface DataClient {
   invite: (email: string, invitedBy: string) => Promise<{ token: string; expiresAt: string }>;
   followUp: (code: string, token: string, questionText: string) => Promise<{ trackingCode: string; token: string }>;
   attachVoice: (code: string, token: string, bytes: Uint8Array, mime: string) => Promise<void>;
+  /** Owner insert into update_signups. `exists` when the same channel+contact is already stored. */
+  insertSignup: (row: { channel: 'email' | 'whatsapp'; contact: string }) => Promise<'created' | 'exists'>;
 }

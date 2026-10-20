@@ -155,6 +155,19 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         );
         return { items: await fetchContent(sql, rows.map((r) => String(r.id))), total: Number(rows[0]?.total ?? 0), page, pageSize };
       }
+      case 'site.search': {
+        const q = String(a.q ?? '').slice(0, 80);
+        const rows = await sql(`select kind, id, title, href, label, score from public.search_site($1, 12)`, [q]);
+        return rows.map((r) => ({
+          kind: String(r.kind),
+          id: String(r.id),
+          title: String(r.title),
+          href: String(r.href),
+          label: String(r.label),
+          score: Number(r.score),
+          fuzzy: Number(r.score) < 5,
+        }));
+      }
       case 'content.get': {
         const rows = await sql(`select id from public.content_items where slug = $1`, [a.slug]);
         return rows[0] ? (await fetchContent(sql, [String(rows[0].id)]))[0] ?? null : null;

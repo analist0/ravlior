@@ -44,6 +44,15 @@ The mark is an open book with a copper spine on an evergreen square.
 
 The rail is evergreen ink even in light mode, so management is visually separate from the public site. Lists share one toolbar: search, status, sort (updated / title / status), active vs trash, pagination. Source archives and the media catalog use the same pattern. Destructive actions confirm in Hebrew and say whether restore is possible.
 
+## Public experience
+
+The shell (header, mega-menu „עיון”, mobile sheet, footer, command palette, library, topics, text pages, 404) lives in `src/styles/experience.css` and uses the same tokens.
+
+- **Reading:** `--font-reading` (Noto Serif Hebrew 400/600/700, `font-display: swap` via `@fontsource`) on `--sheet`. Footnotes use `[^n]` markers in paragraph text. A progress bar, local type size, print, and share sit on article, book and leaflet pages.
+- **Search:** `/` and Ctrl/Cmd+K open a palette over content, topics, series, pages and institutions. Exact tokens rank first; a one-letter miss falls back to trigram word-similarity (`public.search_site`, mirrored in `src/shared/site-search.ts`).
+- **Updates:** the footer form stores an email or Israeli mobile. It does not send mail or WhatsApp.
+- **PWA:** `public/manifest.webmanifest` and `public/sw.js` cache the shell and same-origin pages, never `/api`.
+
 ## Hero
 
 The owner-supplied banner stays. Below it, a typographic hero with a copper-to-evergreen rule. No invented portrait and no new biographical claims.

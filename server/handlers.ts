@@ -1,6 +1,7 @@
 // Web-standard request handlers (Request → Response). Portable: the same code runs under
 // server/node-server.ts (local / Termux) and api/[...route].ts (Vercel Functions).
 import { newToken, newTrackingCode, safeEqualHex, sha256Hex, validateQuestion } from '../src/shared/questions.ts';
+import { validateUpdate } from '../src/shared/updates.ts';
 import { acceptInvite, clearCookie, login, logout, sessionCookie, tokenFrom, wantsSecure } from './auth.ts';
 import { ApiError } from './db.ts';
 import { readEnv, type ServerEnv } from './lib/env.ts';
@@ -21,6 +22,7 @@ export interface Deps {
 
 const trackLimiter = new RateLimiter(60_000, 20);
 const loginLimiter = new RateLimiter(60_000, 10);
+const updateLimiter = new RateLimiter(3_600_000, 5);
 
 function quiet(p: Promise<unknown>): void {
   void p.catch((e) => console.error('[notify] failed:', e instanceof Error ? e.message.slice(0, 120) : 'unknown'));
@@ -122,6 +124,18 @@ async function voiceIn(req: Request, d: Deps): Promise<Response> {
   if (buf.byteLength < 32) return err(422, 'ההקלטה קצרה מדי');
   await d.client.attachVoice(code, token, buf, req.headers.get('content-type') ?? '');
   return json({ ok: true });
+}
+
+async function subscribeUpdates(req: Request, d: Deps, ip: string): Promise<Response> {
+  const body = await readJson(req);
+  const v = validateUpdate(body, d.now());
+  if (!v.ok) return v.bot ? err(400, 'לא ניתן לשלוח את הטופס כעת.') : json({ error: Object.values(v.errors)[0], fields: v.errors }, 422);
+  const fp = await fingerprint(req, ip, d.env.rateSalt);
+  if (!updateLimiter.hit(fp, d.now())) return err(429, 'נשלחו יותר מדי בקשות. נסו שוב מאוחר יותר.');
+  if (!d.client) return err(503, 'שמירת עדכונים אינה זמינה: השרת אינו מחובר למסד הנתונים.');
+  if (!(await d.client.rateLimit(`u:${fp.slice(0, 24)}`, 3600, 8))) return err(429, 'נשלחו יותר מדי בקשות. נסו שוב מאוחר יותר.');
+  await d.client.insertSignup(v.value);
+  return json({ ok: true }, 201);
 }
 
 async function voiceAnswer(req: Request, d: Deps, ip: string): Promise<Response> {
@@ -241,6 +255,9 @@ export async function handle(req: Request, ip = '0.0.0.0', deps: Deps = defaultD
     if (pathname === '/api/questions' && req.method === 'POST') return await submitQuestion(req, deps, ip);
     if (pathname === '/api/questions/follow-up' && req.method === 'POST') return await followUp(req, deps, ip);
     if (pathname === '/api/questions/voice-in' && req.method === 'POST') return await voiceIn(req, deps);
+}
+
+    if (pathname === '/api/updates' && req.method === 'POST') return await subscribeUpdates(req, deps, ip);
     if (pathname === '/api/questions/voice' && req.method === 'POST') return await voiceAnswer(req, deps, ip);
     if (pathname === '/api/import/probe' && req.method === 'POST') return await probe(req, deps);
     if (pathname === '/api/admin/users' && (req.method === 'GET' || req.method === 'POST')) return await adminUsers(req, deps);

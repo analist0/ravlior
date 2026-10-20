@@ -93,10 +93,17 @@ function PublicShell({ repo }: { repo: Repository }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(t.tagName) && !t.isContentEditable) { e.preventDefault(); setSearchOpen(true); }
+      const typing = /INPUT|TEXTAREA|SELECT/.test(t.tagName) || t.isContentEditable;
+      const palette = (e.key === '/' && !typing) || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k');
+      if (palette) { e.preventDefault(); setSearchOpen(true); }
     };
+    const onAsk = () => setSearchOpen(true);
     addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
+    addEventListener('site-search', onAsk);
+    return () => {
+      removeEventListener('keydown', onKey);
+      removeEventListener('site-search', onAsk);
+    };
   }, []);
   return (
     <>

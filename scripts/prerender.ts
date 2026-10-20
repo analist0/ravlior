@@ -45,7 +45,9 @@ function render(o: Out): string {
     `<meta property="og:type" content="${o.type ?? 'website'}" />`,
     `<meta property="og:locale" content="he_IL" />`,
     canonical && `<meta property="og:url" content="${esc(canonical)}" />`,
-    o.image && `<meta property="og:image" content="${esc(o.image)}" />`,
+    `<meta property="og:image" content="${esc(o.image || (SITE ? `${SITE}/images/hero-rabbi-1600.webp` : '/images/hero-rabbi-1600.webp'))}" />`,
+    `<meta property="og:image:alt" content="הרב ליאור כהן שליט״א — תורה, הלכה, שיעורים, שאלות ותשובות" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
     o.jsonLd ? `<script type="application/ld+json">${JSON.stringify(o.jsonLd).replace(/</g, '\\u003c')}</script>` : '',
   ].filter(Boolean).join('\n    ');
   const nav = `<nav aria-label="ניווט"><a href="/">בית</a> · <a href="/library">ספרייה</a> · <a href="/series">סדרות</a> · <a href="/topics">נושאים</a> · <a href="/books">ספרים</a> · <a href="/responsa">שו״ת</a> · <a href="/ask">שאלה לרב</a></nav>`;
@@ -66,7 +68,8 @@ const outs: Out[] = [];
 const latest = [...data.content].sort((a, b) => a.catalogOrder - b.catalogOrder);
 outs.push({ path: '/', title: '', description: 'ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול.',
   body: `<h1>לצפות, להאזין, לעיין ולשאול</h1><p>שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן, והנחלת תורתו של מרן הרב מאיר מאזוז זצ״ל — כל פריט עם ייחוס למקורו.</p><h2>חדש בערוץ</h2>${list(latest.slice(0, 12))}`,
-  jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'אור המאיר', inLanguage: 'he', ...(SITE ? { url: SITE } : {}) } });
+  jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'אור המאיר', inLanguage: 'he', ...(SITE ? { url: SITE } : {}),
+    potentialAction: { '@type': 'SearchAction', target: `${SITE || ''}/library?q={query}`, 'query-input': 'required name=query' } } });
 outs.push({ path: '/library', title: 'ספריית השיעורים', description: 'חיפוש וסינון שיעורי וידאו, אודיו, קטעים קצרים, דברי תורה, ספרים ותשובות של הרב ליאור כהן.', body: `<h1>ספריית השיעורים</h1>${list(latest.slice(0, 60))}` });
 outs.push({ path: '/series', title: 'סדרות', description: 'סדרות שיעורים של הרב ליאור כהן.', body: `<h1>סדרות</h1><ul>${data.series.map((s) => `<li><a href="/series/${esc(s.slug)}">${esc(s.title)}</a></li>`).join('')}</ul>` });
 for (const s of data.series) {
@@ -123,10 +126,20 @@ for (const c of data.content) {
     description: (c.summary ?? (sub || `${TYPE[c.type]} — ${main}`)).slice(0, 180),
     image: yt ? `https://i.ytimg.com/vi/${yt.providerId}/hqdefault.jpg` : null,
     body: `<article><h1>${esc(main!)}</h1>${sub ? `<p>${esc(sub)}</p>` : ''}<p>${esc(c.speaker ?? 'ערוץ מוסדות אור המאיר')} · ${TYPE[c.type]}${c.durationText ? ` · ${esc(c.durationText)}` : ''}</p>${c.summary ? `<p>${esc(c.summary)}</p>` : ''}<h2>מקורות</h2><ul>${srcs}</ul></article>`,
-    // Structured data only with real fields: a breadcrumb (VideoObject needs an upload date we do not have).
-    jsonLd: SITE ? { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'ספרייה', item: `${SITE}/library` },
-      { '@type': 'ListItem', position: 2, name: main, item: `${SITE}${encodeURI(`/item/${c.slug}`)}` }] } : undefined,
+    // Structured data only with real fields: a breadcrumb (VideoObject needs an upload date we do not have)
+    // and an Article when the item is text and a speaker is already on the record.
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@graph': [
+        ...(SITE ? [{ '@type': 'BreadcrumbList', itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'ספרייה', item: `${SITE}/library` },
+          { '@type': 'ListItem', position: 2, name: main, item: `${SITE}${encodeURI(`/item/${c.slug}`)}` }] }] : []),
+        ...(['article', 'book', 'leaflet'].includes(c.type) ? [{
+          '@type': 'Article', headline: main, inLanguage: 'he',
+          ...(c.speaker ? { author: { '@type': 'Person', name: c.speaker } } : {}),
+        }] : []),
+      ],
+    },
   });
 }
 

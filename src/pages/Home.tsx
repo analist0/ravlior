@@ -1,3 +1,4 @@
+import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
 import { useLibraryState } from '../app/library-state.tsx';
 import { Link } from '../app/router.tsx';
@@ -5,9 +6,9 @@ import { useAsync, useRepo } from '../data/repo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { CardGrid, MediaPlayer } from '../components/Media.tsx';
 import { HeroArt, Reveal } from '../components/Motion.tsx';
-import { Badge, CardSkeletons, ErrorState, LinkButton, splitTitle } from '../components/ui.tsx';
+import { Badge, CardSkeletons, ErrorState, LinkButton, splitTitle, TYPE_LABEL } from '../components/ui.tsx';
 import { formatDuration } from '../shared/media.ts';
-import type { HomeSection } from '../shared/types.ts';
+import type { ContentItem, HomeSection } from '../shared/types.ts';
 
 function Actions() {
   const tiles = [
@@ -164,10 +165,79 @@ function WeekQuestion() {
   );
 }
 
+function DeskLane({ title, href, items }: { title: string; href: string; items: ContentItem[] }) {
+  if (!items.length) return null;
+  return (
+    <section className="desk-col" aria-label={title}>
+      <div className="spread"><h3>{title}</h3><Link to={href}>הכול</Link></div>
+      <ol>
+        {items.map((it) => (
+          <li key={it.id}>
+            <Link to={`/item/${it.slug}`}>
+              <span className="desk-kicker">{TYPE_LABEL[it.type]}</span>
+              <strong>{splitTitle(it.title)[0]}</strong>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function Desk() {
+  const repo = useRepo();
+  const data = useAsync(async () => {
+    const [video, audio, read, books] = await Promise.all([
+      repo.listContent({ type: 'video', pageSize: 4 }),
+      repo.listContent({ type: 'audio', pageSize: 4 }),
+      repo.listContent({ type: 'article', pageSize: 3 }),
+      repo.listContent({ type: 'book', pageSize: 2 }),
+    ]);
+    return { video: video.items, audio: audio.items, read: [...read.items, ...books.items].slice(0, 4) };
+  }, [repo]);
+  if (data.error || (!data.loading && !data.data)) return null;
+  return (
+    <section className="section container" aria-labelledby="h-desk">
+      <div className="section-head">
+        <div>
+          <p className="eyebrow">על השולחן</p>
+          <h2 id="h-desk">לצפות, להאזין, לעיין</h2>
+        </div>
+      </div>
+      <p className="soft" style={{ marginTop: '-0.75rem' }}>לפי סדר הקטלוג. תאריכי הקלטה אינם ידועים לרוב הפריטים.</p>
+      {data.loading && <CardSkeletons n={3} />}
+      {data.data && (
+        <div className="desk">
+          <DeskLane title="לצפות" href="/library?type=video" items={data.data.video} />
+          <DeskLane title="להאזין" href="/library?type=audio" items={data.data.audio} />
+          <DeskLane title="לעיין" href="/books" items={data.data.read} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function HomePage() {
   const repo = useRepo();
   const sections = useAsync(() => repo.getHomeSections(), [repo]);
-  useHead({ title: '', description: 'ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול.', path: '/' });
+  const origin = SITE_URL || (typeof location !== 'undefined' ? location.origin : '');
+  useHead({
+    title: '',
+    description: 'ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול.',
+    path: '/',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'אור המאיר',
+      inLanguage: 'he',
+      ...(origin ? { url: origin } : {}),
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${origin}/library?q={query}`,
+        'query-input': 'required name=query',
+      },
+    },
+  });
   const enabled = (sections.data ?? []).filter((s) => s.enabled).sort((a, b) => a.position - b.position);
   const showActions = enabled.some((s) => s.kind === 'actions');
   return (
@@ -195,6 +265,7 @@ export function HomePage() {
         </div>
       </section>
       <WeekQuestion />
+      <Desk />
       {sections.error && <div className="container"><ErrorState error={sections.error} onRetry={sections.reload} /></div>}
       {enabled.filter((s) => s.kind !== 'actions').map((s) => (s.kind === 'continue' ? <Continue key={s.id} title={s.title} /> : <Section key={s.id} s={s} />))}
     </>

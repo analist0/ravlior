@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type DependencyList } from 'react';
+import type { SiteHit } from '../shared/site-search.ts';
+import type { UpdateInput } from '../shared/updates.ts';
 import type {
   Block, ContentItem, ContentQuery, ContentStatus, EventRecord, HomeSection, Institution, Menu, MediaSource, ModuleState,
   Page, PageResult, PublicQuestion, QuestionStatus, QuestionSubmission, Role, Series, SourceArchive, Topic, Verification,
@@ -126,6 +128,10 @@ export interface AdminRepo {
 export interface Repository {
   mode: 'demo' | 'api';
   listContent(q: ContentQuery): Promise<PageResult<ContentItem>>;
+  /** Command-palette search across content, topics, series, pages and institutions. */
+  searchSite(q: string): Promise<SiteHit[]>;
+  /** Stores an email or WhatsApp number. Does not send a message. */
+  subscribeUpdates(input: UpdateInput): Promise<{ ok: true }>;
   getContent(slug: string): Promise<ContentItem | null>;
   getContentByIds(ids: string[]): Promise<ContentItem[]>;
   related(item: ContentItem, limit: number): Promise<ContentItem[]>;

@@ -1,0 +1,127 @@
+/* Public experience: mega menu, command palette groups, reading sheet, 404, signup.
+   Tokens only — see DESIGN_SYSTEM.md. */
+
+.nav-trigger {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: var(--s-2) var(--s-3); border-radius: var(--r-pill); border: 0; background: transparent;
+  color: var(--text); font-weight: 600; font-size: var(--step--1); cursor: pointer; min-height: var(--tap);
+}
+.nav-trigger:hover, .nav-trigger[data-state='open'] { background: var(--accent-soft); }
+.nav-sheet-btn { display: inline-grid; }
+@media (min-width: 1000px) { .nav-sheet-btn { display: none; } }
+
+.mega {
+  z-index: 60; width: min(880px, calc(100vw - 2rem));
+  background: var(--bg-elevated); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-3);
+  box-shadow: var(--shadow-3); padding: var(--s-5);
+}
+.mega-grid { display: grid; gap: var(--s-5); grid-template-columns: 1fr; }
+@media (min-width: 800px) { .mega-grid { grid-template-columns: 1.1fr 1fr 1fr; } }
+.mega-grid h2 {
+  font-family: var(--font-sans); font-size: var(--step--1); font-weight: 700;
+  color: var(--gold-text); margin: 0 0 var(--s-2); letter-spacing: 0.02em;
+}
+.mega-grid ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.mega-grid a {
+  display: grid; gap: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r-2);
+  color: var(--text); text-decoration: none; min-height: var(--tap); align-content: center;
+}
+.mega-grid a:hover { background: var(--accent-soft); }
+.mega-grid a span { color: var(--text-soft); font-size: 0.8rem; }
+.nav-sheet { max-width: 520px; }
+.nav-sheet nav { display: grid; gap: var(--s-2); margin-top: var(--s-4); }
+.nav-sheet .sheet-links { display: grid; gap: var(--s-1); margin-bottom: var(--s-4); }
+.nav-sheet .sheet-links a { color: var(--text); text-decoration: none; font-weight: 600; padding: var(--s-2) 0; min-height: var(--tap); display: flex; align-items: center; }
+
+.site-footer .footer-grid {
+  display: grid; gap: var(--s-8); grid-template-columns: 1fr;
+}
+@media (min-width: 900px) { .site-footer .footer-grid { grid-template-columns: 1.1fr 1fr 1.2fr; align-items: start; } }
+.footer-brand { display: flex; gap: var(--s-3); align-items: center; color: #f7fbf9; text-decoration: none; margin-bottom: var(--s-3); }
+.footer-brand strong { font-family: var(--font-serif); font-size: var(--step-2); display: block; }
+.site-footer .updates { display: grid; gap: var(--s-3); }
+.site-footer .updates h2 { color: #f7fbf9; font-size: var(--step-1); margin: 0; }
+.updates-switch { display: flex; gap: var(--s-2); }
+.pwa-hint { display: grid; gap: var(--s-2); margin-top: var(--s-4); }
+.form-error { color: var(--danger); font-weight: 600; margin: 0; }
+
+.desk { display: grid; gap: var(--s-4); grid-template-columns: 1fr; }
+@media (min-width: 900px) { .desk { grid-template-columns: repeat(3, 1fr); } }
+.desk-col {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3);
+  padding: var(--s-4) var(--s-5) var(--s-3); min-width: 0;
+}
+.desk-col h3 { font-size: var(--step-1); margin-bottom: var(--s-3); }
+.desk-col ol { list-style: none; margin: 0; padding: 0; display: grid; }
+.desk-col li + li { border-top: 1px solid var(--border); }
+.desk-col a { display: grid; gap: 2px; padding-block: var(--s-3); color: var(--text); text-decoration: none; }
+.desk-col a:hover { color: var(--accent); }
+.desk-col a strong { font-family: var(--font-serif); font-weight: 700; line-height: 1.35; }
+.desk-kicker { color: var(--gold-text); font-size: 0.75rem; font-weight: 700; }
+
+.library-head { max-width: 40rem; }
+.library-head p { color: var(--text-muted); }
+
+.topic-hero { max-width: 40rem; padding-bottom: var(--s-2); }
+.topic-hero h1 { font-size: var(--step-4); }
+.topic-count { font-variant-numeric: tabular-nums; }
+
+.read-progress {
+  position: sticky; top: var(--header-h); z-index: 30; height: 3px; background: transparent;
+}
+.read-progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--accent)); width: 0; }
+.text-item h1 { font-family: var(--font-reading); font-weight: 700; }
+.reading-tools { position: relative; z-index: 2; }
+.torah-sheet {
+  background: var(--sheet); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-3);
+  padding: clamp(var(--s-5), 4vw, var(--s-10));
+  box-shadow: var(--shadow-1);
+}
+.torah-prose {
+  max-width: var(--reading-measure);
+  font-family: var(--font-reading);
+  font-size: calc(1.2rem * var(--reading-scale, 1));
+  line-height: 1.85;
+  font-weight: 400;
+}
+.torah-prose h2, .torah-prose h3 { font-family: var(--font-reading); }
+.torah-prose p { margin-bottom: 1.15em; }
+.fn-ref { font-family: var(--font-sans); font-size: 0.72em; font-weight: 700; line-height: 0; }
+.fn-ref a { text-decoration: none; padding-inline: 2px; }
+.footnotes { margin-top: var(--s-8); padding-top: var(--s-4); border-top: 1px solid var(--border); font-family: var(--font-sans); font-size: var(--step--1); }
+.footnotes ol { padding-inline-start: var(--s-5); }
+.footnotes li { margin-bottom: var(--s-2); }
+.fn-back { margin-inline-start: var(--s-2); text-decoration: none; }
+
+.miss {
+  text-align: center; padding-block: clamp(var(--s-10), 8vw, var(--s-16));
+}
+.miss-num {
+  font-family: var(--font-serif); font-size: clamp(4rem, 12vw, 7rem); line-height: 0.9;
+  margin: 0; color: var(--text);
+  background: linear-gradient(var(--gold-text), var(--accent));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+@supports not (background-clip: text) { .miss-num { color: var(--accent); background: none; } }
+.miss h1 { font-size: var(--step-3); }
+
+.search-group { margin: 0; padding: 0 var(--s-2) var(--s-2); }
+.search-group h3 {
+  margin: var(--s-3) var(--s-3) var(--s-1); font-family: var(--font-sans);
+  font-size: 0.75rem; font-weight: 700; color: var(--text-soft);
+}
+.search-results a small { margin-inline-start: auto; color: var(--text-soft); font-size: 0.75rem; white-space: nowrap; }
+.search-hint { display: flex; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) var(--s-4); color: var(--text-soft); font-size: var(--step--1); }
+
+.card, .row-item { content-visibility: auto; contain-intrinsic-size: auto 220px; }
+
+@media print {
+  .site-header, .bottom-nav, .site-footer, .demo-banner, .player-bar, .read-progress,
+  .reading-tools, .no-print, .skip-link { display: none !important; }
+  body, .torah-sheet { background: #fff !important; color: #000 !important; }
+  .torah-sheet { border: 0; box-shadow: none; padding: 0; }
+  a { color: #000; text-decoration: none; }
+  main { padding: 0 !important; }
+}

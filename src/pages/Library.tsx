@@ -54,7 +54,10 @@ export default function LibraryPage() {
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'ספרייה' }]} />
-      <h1>ספריית השיעורים</h1>
+      <header className="library-head">
+        <h1>ספריית השיעורים</h1>
+        <p>חיפוש וסינון לפי סוג, נושא, סדרה ומקור. התוצאות מתעלמות מניקוד ומגרשיים.</p>
+      </header>
       <form className="filters" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: text, page: null }); }}>
         <div className="field">
           <label htmlFor="lib-q">חיפוש</label>

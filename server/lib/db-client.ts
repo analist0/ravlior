@@ -134,5 +134,19 @@ export function dbClient(env: ServerEnv): DataClient {
         await sql(`update public.question_submissions set voice_question_path = $1, version = version where id = $2`, [path, row.id]);
       });
     },
+    async insertSignup(row) {
+      try {
+        await asOwner(async (sql) => {
+          await sql(
+            `insert into public.update_signups (channel, contact, consent) values ($1, $2, true)`,
+            [row.channel, row.contact],
+          );
+        });
+        return 'created';
+      } catch (e) {
+        if (e instanceof ApiError && e.code === '23505') return 'exists';
+        throw e;
+      }
+    },
   };
 }

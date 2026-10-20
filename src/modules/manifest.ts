@@ -46,7 +46,7 @@ export const MODULES: ModuleManifest[] = [
     navigation: [{ label: 'ספרייה', href: '/library' }],
     permissions: [{ action: 'content.edit', roles: EDIT }, { action: 'content.publish', roles: REVIEW }],
     settings: [{ key: 'pageSize', label: 'פריטים בעמוד', type: 'number', default: 24 }],
-    migrations: [...CORE_SQL, '004_search.sql'], featureFlag: 'module.library', enabledByDefault: true,
+    migrations: [...CORE_SQL, '004_search.sql', '009_site_updates.sql'], featureFlag: 'module.library', enabledByDefault: true,
   },
   {
     id: 'media', version: '1.0.0', name: 'מדיה ונגנים', description: 'מתאמי ספקים, נגן אודיו מתמשך, העלאות ל-Storage.',

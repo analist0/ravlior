@@ -2,6 +2,7 @@ import { useHead } from '../app/head.ts';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { BlockRenderer } from '../components/Blocks.tsx';
 import { Breadcrumbs, ErrorState, Skeleton } from '../components/ui.tsx';
+import { ContactForm } from './ContactForm.tsx';
 import { NotFound } from './NotFound.tsx';
 
 export default function ContentPage({ params }: { params: Record<string, string> }) {
@@ -16,6 +17,7 @@ export default function ContentPage({ params }: { params: Record<string, string>
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: r.data.title }]} />
       <h1>{r.data.title}</h1>
       <BlockRenderer blocks={r.data.blocks} />
+      {params.slug === 'contact' && <div style={{ marginTop: 'var(--s-6)', maxWidth: 'var(--maxw-text)' }}><ContactForm /></div>}
     </div>
   );
 }

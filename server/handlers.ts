@@ -1,5 +1,6 @@
 // Web-standard request handlers (Request → Response). Portable: the same code runs under
 // server/node-server.ts (local / Termux) and api/[...route].ts (Vercel Functions).
+import { validateContact } from '../src/shared/sections.ts';
 import { newToken, newTrackingCode, safeEqualHex, sha256Hex, validateQuestion } from '../src/shared/questions.ts';
 import { acceptInvite, clearCookie, login, logout, sessionCookie, tokenFrom, wantsSecure } from './auth.ts';
 import { ApiError } from './db.ts';
@@ -18,6 +19,7 @@ export interface Deps {
   now: () => number;
 }
 
+const contactMinute = new RateLimiter(60_000, 5);
 const perMinute = new RateLimiter(60_000, 3);
 const perDay = new RateLimiter(86_400_000, 20);
 const trackLimiter = new RateLimiter(60_000, 20);
@@ -82,6 +84,18 @@ async function submitQuestion(req: Request, d: Deps, ip: string): Promise<Respon
     }
   }
   return err(500, 'לא ניתן היה ליצור מספר מעקב. נסו שוב.');
+}
+
+async function submitContact(req: Request, d: Deps, ip: string): Promise<Response> {
+  const body = await readJson(req);
+  const v = validateContact(body, d.now());
+  if (!v.ok) return v.bot ? err(400, 'לא ניתן לשלוח את הטופס כעת.') : json({ error: Object.values(v.errors)[0], fields: v.errors }, 422);
+  const fp = await fingerprint(req, ip, d.env.rateSalt);
+  if (!contactMinute.hit(fp, d.now())) return err(429, 'נשלחו יותר מדי פניות. נסו שוב מאוחר יותר.');
+  if (!d.client) return err(503, 'קבלת פניות אינה זמינה: השרת אינו מחובר למסד הנתונים.');
+  if (!(await d.client.rateLimit(`c:${fp}`, 3600, 8))) return err(429, 'נשלחו יותר מדי פניות. נסו שוב מאוחר יותר.');
+  await d.client.insertContact({ name: v.value.name, email: v.value.email, subject: v.value.subject, body: v.value.body });
+  return json({ ok: true }, 201);
 }
 
 async function voiceAnswer(req: Request, d: Deps, ip: string): Promise<Response> {
@@ -198,6 +212,7 @@ export async function handle(req: Request, ip = '0.0.0.0', deps: Deps = defaultD
   try {
     if (pathname === '/api/health' && req.method === 'GET') return json({ ok: true, database: deps.env.configured ? 'configured' : 'not-configured' });
     if (pathname === '/api/questions' && req.method === 'POST') return await submitQuestion(req, deps, ip);
+    if (pathname === '/api/contact' && req.method === 'POST') return await submitContact(req, deps, ip);
     if (pathname === '/api/questions/voice' && req.method === 'POST') return await voiceAnswer(req, deps, ip);
     if (pathname === '/api/import/probe' && req.method === 'POST') return await probe(req, deps);
     if (pathname === '/api/admin/users' && (req.method === 'GET' || req.method === 'POST')) return await adminUsers(req, deps);

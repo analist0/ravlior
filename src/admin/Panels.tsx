@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDragReorder } from './reorder.tsx';
 import { errorMessage, useAsync, useRepo, type EntityName } from '../data/repo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { Badge, Button, Checkbox, IconButton, Notice, SelectField, TextArea, TextField, TYPE_LABEL, formatHebDate, splitTitle } from '../components/ui.tsx';
@@ -6,7 +7,31 @@ import { useToast } from '../components/Toast.tsx';
 import { useConfirm } from '../components/Dialog.tsx';
 import { BLOCK_LABEL, BLOCK_TYPES, emptyBlock, sanitizeBlocks } from '../shared/blocks.ts';
 import { canonicalizeUrl, detectProvider, youtubeId } from '../shared/media.ts';
+import { blocksToWriting, bookOffers, revisionDiff, writingToBlocks } from '../shared/sections.ts';
 import type { Block, BookDetails, ContentItem, MediaSource } from '../shared/types.ts';
+
+function MediaPicker({ onPick }: { onPick: (src: string) => void }) {
+  const repo = useRepo();
+  const [open, setOpen] = useState(false);
+  const r = useAsync(() => (open ? repo.admin.listMedia({ pageSize: 40 }) : Promise.resolve(null)), [open]);
+  const images = (r.data?.items ?? []).filter((m) => /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(m.url) || m.kind === 'image');
+  return (
+    <div className="full">
+      <Button size="sm" variant="secondary" icon="eye" onClick={() => setOpen((v) => !v)}>{open ? 'סגירת מאגר המדיה' : 'בחירה מהמאגר'}</Button>
+      {open && (
+        <ul className="reorder-list" style={{ marginTop: 6 }}>
+          {images.length === 0 && <li className="soft">אין תמונות במאגר. אפשר להדביק קישור https.</li>}
+          {images.slice(0, 12).map((m) => (
+            <li key={m.id}>
+              <span className="grow ltr" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.url}</span>
+              <Button size="sm" variant="secondary" onClick={() => { onPick(m.url); setOpen(false); }}>בחירה</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function move<T>(arr: T[], from: number, to: number): T[] {
   if (to < 0 || to >= arr.length) return arr;
@@ -50,15 +75,28 @@ function ContentPicker({ onPick, exclude = [] }: { onPick: (c: ContentItem) => v
 
 export function BlockEditor({ value, onChange }: { value: Block[]; onChange: (b: Block[]) => void }) {
   const [adding, setAdding] = useState<Block['type']>('paragraph');
+  const [writing, setWriting] = useState(false);
+  const [draft, setDraft] = useState('');
+  const drag = useDragReorder(value.length, (from, to) => onChange(move(value, from, to)));
   const { issues } = sanitizeBlocks(value);
   const set = (i: number, b: Block) => onChange(value.map((x, j) => (j === i ? b : x)));
   return (
     <div className="stack">
-      {value.length === 0 && <p className="soft">אין בלוקים עדיין.</p>}
-      {value.map((b, i) => {
+      <div className="spread">
+        <p className="soft" style={{ margin: 0 }}>עברית מימין לשמאל. מצב כתיבה מאחד כותרות ופסקאות לטיוטה אחת. ציטוטים ומדיה נשארים בלוקים.</p>
+        {!writing
+          ? <Button size="sm" variant="secondary" onClick={() => { setDraft(blocksToWriting(value).text); setWriting(true); }}>מצב כתיבה</Button>
+          : <Button size="sm" onClick={() => { onChange(writingToBlocks(draft, blocksToWriting(value).rest)); setWriting(false); }}>חזרה לבלוקים</Button>}
+      </div>
+      {writing && (
+        <TextArea label="טיוטה בעברית" dir="rtl" lang="he" className="textarea write-box" value={draft} onChange={(e) => setDraft(e.target.value)}
+          hint="שורה ריקה מפרידה פסקאות. ## כותרת, ### כותרת משנה. אין HTML." />
+      )}
+      {value.length === 0 && !writing && <p className="soft">אין בלוקים עדיין.</p>}
+      {!writing && value.map((b, i) => {
         const issue = issues.find((x) => x.index === i);
         return (
-          <div key={i} className="block-item" aria-label={`בלוק ${i + 1}: ${BLOCK_LABEL[b.type]}`} role="group">
+          <div key={i} className="block-item" aria-label={`בלוק ${i + 1}: ${BLOCK_LABEL[b.type]}`} role="group" {...drag.bind(i)}>
             <header>
               <strong>{i + 1}. {BLOCK_LABEL[b.type]}</strong>
               <span className="row" style={{ gap: 0 }}>
@@ -84,6 +122,7 @@ export function BlockEditor({ value, onChange }: { value: Block[]; onChange: (b:
                 <TextField label="כתובת תמונה (https או קובץ שהועלה)" dir="ltr" value={b.src} onChange={(e) => set(i, { ...b, src: e.target.value })} />
                 <TextField label="טקסט חלופי (חובה)" value={b.alt} onChange={(e) => set(i, { ...b, alt: e.target.value })} />
                 <TextField label="קרדיט צילום" value={b.credit ?? ''} onChange={(e) => set(i, { ...b, credit: e.target.value })} hint="רק לתמונה שיש אישור לפרסמה" />
+                <MediaPicker onPick={(src) => set(i, { ...b, src })} />
               </div>
             )}
             {b.type === 'pdf' && (
@@ -213,6 +252,8 @@ export function TopicsPicker({ value, onChange }: { value: string[]; onChange: (
 export function BookDetailsEditor({ value, onChange }: { value: BookDetails | null; onChange: (v: BookDetails) => void }) {
   const v: BookDetails = value ?? { authorText: null, editorText: null, publisher: null, authoredByRabbi: false, coverPath: null, pdfAccess: 'none', locatedStatus: '' };
   const set = (p: Partial<BookDetails>) => onChange({ ...v, ...p });
+  const offers = bookOffers(v);
+  const tocText = (v.toc ?? []).map((t) => t.title).join('\n');
   return (
     <section className="panel" aria-labelledby="h-book">
       <h2 id="h-book">פרטי ספר / עלון</h2>
@@ -225,8 +266,15 @@ export function BookDetailsEditor({ value, onChange }: { value: BookDetails | nu
         </SelectField>
         <TextField label="נתיב עטיפה (רק עטיפה אמיתית)" dir="ltr" value={v.coverPath ?? ''} onChange={(e) => set({ coverPath: e.target.value || null })} />
         <Checkbox label="הרב הוא המחבר" checked={v.authoredByRabbi} onChange={(e) => set({ authoredByRabbi: e.target.checked })} />
+        <TextField label="קישור רכישה" dir="ltr" value={v.purchaseUrl ?? ''} hint="רק https אמיתי. ריק = הכפתור לא יוצג." onChange={(e) => set({ purchaseUrl: e.target.value || null })} />
+        <TextField label="קישור תרומה" dir="ltr" value={v.donationUrl ?? ''} hint="רק https אמיתי. ריק = הכפתור לא יוצג." onChange={(e) => set({ donationUrl: e.target.value || null })} />
       </div>
+      {(v.purchaseUrl && !offers.purchase) || (v.donationUrl && !offers.donation) ? <p className="error" role="alert">קישור רכישה או תרומה חייב להתחיל ב-https://</p> : null}
+      <TextArea label="תוכן עניינים (שורה לפרק)" value={tocText} onChange={(e) => set({ toc: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean).map((title) => ({ title })) })} hint="רק כותרות אמיתיות. ריק = אין תוכן עניינים באתר." />
       <TextArea label="מצב איתור" value={v.locatedStatus} onChange={(e) => set({ locatedStatus: e.target.value })} hint="למשל: אותר דיווח בלבד; לא אותר PDF" />
+      <h3 style={{ fontSize: 'var(--step-0)' }}>קטע לקריאה לדוגמה</h3>
+      <p className="soft">מוצג רק אם יש כאן בלוקים. אין למלא ציטוט שלא אושר.</p>
+      <BlockEditor value={v.sample ?? []} onChange={(sample) => set({ sample })} />
     </section>
   );
 }
@@ -245,6 +293,7 @@ export function SeriesItemsEditor({ seriesId, initial }: { seriesId: string; ini
     return out;
   }, [ids.join(',')]);
   const titleOf = (id: string) => splitTitle(items.data?.find((c) => c.id === id)?.title ?? '…')[0];
+  const drag = useDragReorder(ids.length, (from, to) => setIds(move(ids, from, to)));
   const save = async () => {
     setBusy(true);
     try { await repo.admin.setSeriesItems(seriesId, ids); toast('סדר הפרקים נשמר'); } catch (e) { toast(errorMessage(e), { tone: 'error' }); } finally { setBusy(false); }
@@ -254,7 +303,7 @@ export function SeriesItemsEditor({ seriesId, initial }: { seriesId: string; ini
       <h2 id="h-si">פרקים בסדרה ({ids.length})</h2>
       <ol className="reorder-list">
         {ids.map((id, i) => (
-          <li key={id}>
+          <li key={id} {...drag.bind(i)}>
             <span className="kbd">{i + 1}</span>
             <span className="grow">{titleOf(id)}</span>
             <ReorderButtons i={i} n={ids.length} label={titleOf(id)} onMove={(to) => setIds(move(ids, i, to))} />
@@ -268,22 +317,45 @@ export function SeriesItemsEditor({ seriesId, initial }: { seriesId: string; ini
   );
 }
 
-export function RevisionsPanel({ entity, id, onRestore }: { entity: EntityName; id: string; onRestore: (snapshot: Record<string, unknown>) => void }) {
+export function RevisionsPanel({ entity, id, current, onRestore }: { entity: EntityName; id: string; current?: Record<string, unknown>; onRestore: (snapshot: Record<string, unknown>) => void }) {
   const repo = useRepo();
   const confirm = useConfirm();
+  const [diffOf, setDiffOf] = useState<string | null>(null);
   const r = useAsync(() => repo.admin.revisions(entity, id), [entity, id]);
+  const list = r.data?.slice(0, 15) ?? [];
   return (
     <section className="panel" aria-labelledby="h-rev">
       <h2 id="h-rev"><Icon name="history" /> היסטוריית גרסאות</h2>
-      {r.data?.length === 0 && <p className="soft">אין גרסאות קודמות.</p>}
+      {list.length === 0 && <p className="soft">אין גרסאות קודמות.</p>}
       <ul className="reorder-list">
-        {r.data?.slice(0, 15).map((v) => (
-          <li key={v.version + v.createdAt}>
-            <span className="kbd">v{v.version}</span>
-            <span className="grow soft">{formatHebDate(v.createdAt)} · {v.createdBy ?? 'מערכת'}</span>
-            <Button size="sm" variant="ghost" onClick={() => void confirm({ title: `טעינת גרסה ${v.version} לטופס`, body: 'השדות בטופס יוחלפו בערכי הגרסה הקודמת. השינוי יישמר רק לאחר לחיצה על „שמירה”.', confirmLabel: 'טעינה לטופס' }).then((ok) => ok && onRestore(v.snapshot))}>שחזור לטופס</Button>
-          </li>
-        ))}
+        {list.map((v, i) => {
+          const newer = i === 0 ? current : list[i - 1]?.snapshot;
+          const rows = newer ? revisionDiff(v.snapshot, newer) : [];
+          const key = `${v.version}-${v.createdAt}`;
+          return (
+            <li key={key} style={{ flexWrap: 'wrap' }}>
+              <span className="kbd">v{v.version}</span>
+              <span className="grow soft">{formatHebDate(v.createdAt)} · {v.createdBy ?? 'מערכת'}</span>
+              <Button size="sm" variant="ghost" onClick={() => setDiffOf(diffOf === key ? null : key)}>השוואה</Button>
+              <Button size="sm" variant="ghost" onClick={() => void confirm({ title: `טעינת גרסה ${v.version} לטופס`, body: 'השדות בטופס יוחלפו בערכי הגרסה הקודמת. השינוי יישמר רק לאחר לחיצה על „שמירה”.', confirmLabel: 'טעינה לטופס' }).then((ok) => ok && onRestore(v.snapshot))}>שחזור לטופס</Button>
+              {diffOf === key && (
+                <div className="table-wrap" style={{ flexBasis: '100%' }}>
+                  {rows.length === 0 ? <p className="soft">אין הבדל בשדות שנשמרו.</p> : (
+                    <table className="data diff-table">
+                      <caption className="sr-only">הבדלים מול הגרסה הבאה</caption>
+                      <thead><tr><th>שדה</th><th>בגרסה זו</th><th>אחר כך</th></tr></thead>
+                      <tbody>
+                        {rows.slice(0, 12).map((row) => (
+                          <tr key={row.key}><th scope="row">{row.key}</th><td className="diff-before">{row.before || '—'}</td><td className="diff-after">{row.after || '—'}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -9,8 +9,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ContentItem, Page, SeedData, Series, Topic } from '../src/shared/types.ts';
+import type { ContentItem, EventRecord, Institution, Page, SeedData, Series, Topic } from '../src/shared/types.ts';
 import { DEFAULT_PAGES } from '../src/shared/defaults.ts';
+import { bookJsonLd, eventJsonLd, isListed } from '../src/shared/sections.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = resolve(root, 'dist');
@@ -21,7 +22,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const split = (t: string) => { const i = t.indexOf(' / '); return i > 0 ? [t.slice(0, i).trim(), t.slice(i + 3).trim()] : [t.trim(), '']; };
 const TYPE: Record<string, string> = { video: 'וידאו', audio: 'אודיו', short: 'קצר', live: 'שידור מוקלט', book: 'ספר', leaflet: 'עלון', article: 'דבר תורה', answer: 'תשובה' };
 
-async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; series: Series[]; pages: Omit<Page, 'id'>[]; source: string }> {
+async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; series: Series[]; pages: Omit<Page, 'id'>[]; events: EventRecord[]; institutions: Institution[]; source: string }> {
   if (process.env.DATABASE_URL) {
     const { withActor } = await import('../server/db.ts');
     const { loadPrerender } = await import('../server/store.ts');
@@ -29,7 +30,15 @@ async function loadData(): Promise<{ content: ContentItem[]; topics: Topic[]; se
     return { ...data, source: 'database' };
   }
   const seed: SeedData = JSON.parse(readFileSync(resolve(root, 'src/data/seed.json'), 'utf8'));
-  return { content: seed.content.filter((c) => c.status === 'published' && !c.deletedAt), topics: seed.topics, series: seed.series, pages: DEFAULT_PAGES, source: 'seed' };
+  return {
+    content: seed.content.filter((c) => isListed(c)),
+    topics: seed.topics,
+    series: seed.series,
+    pages: DEFAULT_PAGES,
+    events: seed.events.filter((e) => isListed(e)),
+    institutions: seed.institutions.filter((i) => isListed(i)),
+    source: 'seed',
+  };
 }
 
 interface Out { path: string; title: string; description: string; body: string; image?: string | null; type?: string; jsonLd?: unknown }
@@ -78,11 +87,27 @@ for (const t of data.topics) {
   const items = (data.content as (ContentItem & { topicIds?: string[] })[]).filter((c) => c.topicIds?.includes(t.id));
   outs.push({ path: `/topics/${t.slug}`, title: t.name, description: `שיעורים ותכנים בנושא ${t.name}`, body: `<h1>${esc(t.name)}</h1>${list(items.slice(0, 60))}` });
 }
+const printed = data.content.filter((c) => ['book', 'leaflet', 'article'].includes(c.type));
 outs.push({ path: '/books', title: 'ספרים, עלונים ודברי תורה', description: 'ספרים וקונטרסים הקשורים לרב ליאור כהן ולמורשת מרן הרב מאזוז, עלונים ודברי תורה כתובים — עם פרטי מקור מדויקים.',
-  body: `<h1>ספרים, עלונים ודברי תורה</h1>${list(data.content.filter((c) => ['book', 'leaflet', 'article'].includes(c.type)))}` });
+  body: `<h1>ספרים, עלונים ודברי תורה</h1><ul>${printed.map((c) => `<li><a href="/books/${esc(c.slug)}">${esc(split(c.title)[0]!)}</a></li>`).join('')}</ul>` });
+for (const c of printed) {
+  const [main] = split(c.title);
+  const page = SITE ? `${SITE}${encodeURI(`/books/${c.slug}`)}` : null;
+  outs.push({
+    path: `/books/${c.slug}`, title: main!, description: (c.summary ?? main!).slice(0, 180), type: 'article',
+    body: `<article><h1>${esc(main!)}</h1>${c.summary ? `<p>${esc(c.summary)}</p>` : ''}${c.bookDetails?.locatedStatus ? `<p>${esc(c.bookDetails.locatedStatus)}</p>` : ''}</article>`,
+    jsonLd: bookJsonLd(c, page),
+  });
+}
+const datedEvents = data.events.map((e) => eventJsonLd(e, SITE ? `${SITE}/events#${encodeURIComponent(e.slug)}` : null)).filter((x): x is Record<string, unknown> => !!x);
+outs.push({
+  path: '/events', title: 'אירועים', description: 'פעילות מתועדת. תאריך מוצג רק כשצוין במקור.',
+  body: `<h1>אירועים</h1><ul>${data.events.map((e) => `<li id="${esc(e.slug)}">${esc(e.title)}</li>`).join('')}</ul>`,
+  jsonLd: datedEvents.length ? datedEvents : undefined,
+});
 outs.push({ path: '/responsa', title: 'שאלות ותשובות', description: 'תשובות הלכתיות של הרב ליאור כהן עם ייחוס מדויק.', body: `<h1>שאלות ותשובות</h1>${list(data.content.filter((c) => c.type === 'answer'))}` });
 outs.push({ path: '/ask', title: 'שאלה לרב', description: 'שליחת שאלה לרב ליאור כהן — ללא הרשמה, אפשר בעילום שם. השאלה אינה מתפרסמת ללא הסכמה ואישור.', body: '<h1>שאלה לרב</h1><p>הטופס נטען עם האתר.</p>' });
-outs.push({ path: '/institutions', title: 'מוסדות ופעילות', description: 'מוסדות אור המאיר, ישיבת מאור יוסף, הישיבה הגדולה אורחות מאיר וקהילת היכל משה — ופעילות מתועדת עם קישורים למקורות.', body: '<h1>מוסדות ופעילות</h1>' });
+outs.push({ path: '/institutions', title: 'מוסדות ופעילות', description: 'מוסדות אור המאיר, ישיבת מאור יוסף, הישיבה הגדולה אורחות מאיר וקהילת היכל משה — ופעילות מתועדת עם קישורים למקורות.', body: `<h1>מוסדות ופעילות</h1><ul>${data.institutions.map((i) => `<li>${esc(i.name)}</li>`).join('')}</ul><p><a href="/events">אירועים</a></p>` });
 outs.push({ path: '/sources', title: 'מקורות', description: 'הארכיונים והאתרים שמהם נאסף המידע באתר.', body: '<h1>מקורות</h1>' });
 for (const p of data.pages) {
   const text = p.blocks.map((b) => ('text' in b ? `<p>${esc(b.text)}</p>` : '')).join('');

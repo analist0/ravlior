@@ -5,14 +5,14 @@ import { previewRows } from '../src/shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../src/shared/media.ts';
 import { relatedItems } from '../src/shared/query.ts';
 import type {
-  ContentItem, ContentQuery, EventRecord, HomeSection, Institution, MediaSource, Menu, ModuleState, Page,
+  ContactMessage, ContentItem, ContentQuery, EventRecord, HomeSection, Institution, MediaSource, Menu, ModuleState, Page,
   PublicQuestion, QuestionSubmission, Series, SourceArchive, Topic,
 } from '../src/shared/types.ts';
 import type { ArchiveInput, EntityName, EntityRecord, ImportRow, ListOptions, MediaCatalogRow } from '../src/data/repo.ts';
 import { ApiError, asOwner, withActor, type Row, type Sql } from './db.ts';
 import { signMedia } from './media-sign.ts';
 
-const JSON_COLS = new Set(['body', 'provenance', 'blocks', 'source_urls', 'answer_blocks', 'items', 'config', 'settings']);
+const JSON_COLS = new Set(['body', 'provenance', 'blocks', 'source_urls', 'answer_blocks', 'items', 'config', 'settings', 'toc', 'sample']);
 const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 const snake = (k: string) => k.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
 const fromRow = <T,>(r: Row): T => Object.fromEntries(Object.entries(r).map(([k, v]) => [camel(k), v])) as T;
@@ -23,12 +23,12 @@ const TABLE: Record<EntityName, string> = {
   institutions: 'institutions', events: 'events', publicQuestions: 'public_questions',
 };
 const WRITABLE: Record<EntityName, string[]> = {
-  content: ['slug', 'type', 'title', 'summary', 'body', 'speaker', 'attribution_status', 'attribution_note', 'event_date', 'event_date_text', 'source_published_date', 'duration_seconds', 'duration_text', 'status', 'featured', 'verification', 'provenance', 'duplicate_group', 'catalog_order'],
+  content: ['slug', 'type', 'title', 'summary', 'body', 'speaker', 'attribution_status', 'attribution_note', 'event_date', 'event_date_text', 'source_published_date', 'duration_seconds', 'duration_text', 'status', 'featured', 'verification', 'provenance', 'duplicate_group', 'catalog_order', 'publish_at'],
   topics: ['slug', 'name', 'description', 'sort', 'auto', 'status'],
   series: ['slug', 'title', 'description', 'kind', 'source_url', 'status', 'sort'],
-  pages: ['slug', 'title', 'description', 'blocks', 'status'],
-  institutions: ['slug', 'name', 'description', 'source_urls', 'status'],
-  events: ['slug', 'institution_id', 'title', 'event_date', 'date_text', 'summary', 'source_urls', 'status'],
+  pages: ['slug', 'title', 'description', 'blocks', 'status', 'publish_at'],
+  institutions: ['slug', 'name', 'description', 'source_urls', 'place_label', 'map_url', 'status', 'publish_at'],
+  events: ['slug', 'institution_id', 'title', 'event_date', 'date_text', 'summary', 'source_urls', 'location_label', 'map_url', 'starts_at', 'ends_at', 'status', 'publish_at'],
   publicQuestions: ['slug', 'question_text', 'answer_blocks', 'answer_audio_url', 'topic_id', 'attribution', 'approved_by_rabbi', 'status', 'source_submission_id'],
 };
 const TITLE_COL: Record<EntityName, string> = {
@@ -37,6 +37,9 @@ const TITLE_COL: Record<EntityName, string> = {
 const SEARCH_COL: Record<EntityName, string> = {
   content: 'search_text', topics: 'name', series: 'title', pages: 'title', institutions: 'name', events: 'title', publicQuestions: 'question_text',
 };
+
+const BOOK_COLS = ['content_id', 'author_text', 'editor_text', 'publisher', 'authored_by_rabbi', 'cover_path', 'pdf_access', 'located_status', 'toc', 'sample', 'purchase_url', 'donation_url'];
+const PUBLIC_READY = `(publish_at is null or publish_at <= now())`;
 
 const CONTENT_SQL = `select c.*,
   coalesce((select jsonb_agg(to_jsonb(m) order by m.is_primary desc) from public.media_sources m where m.content_id = c.id), '[]'::jsonb) as sources,
@@ -112,12 +115,14 @@ async function getOne(sql: Sql, entity: EntityName, id: string): Promise<EntityR
 }
 
 export async function loadPrerender(sql: Sql) {
-  const content = (await sql(`${CONTENT_SQL} where c.status = 'published' and c.deleted_at is null`)).map(mapContent);
+  const content = (await sql(`${CONTENT_SQL} where c.status = 'published' and c.deleted_at is null and (c.publish_at is null or c.publish_at <= now())`)).map(mapContent);
   const topics = (await sql(`select * from public.topics where status = 'published' and deleted_at is null order by sort`)).map((r) => fromRow<Topic>(r));
   const series = (await sql(`select s.*, coalesce((select jsonb_agg(si.content_id order by si.position) from public.series_items si where si.series_id = s.id), '[]'::jsonb) as items
     from public.series s where s.status = 'published' and s.deleted_at is null order by s.sort`)).map((r) => ({ ...fromRow<Series>(r), items: Array.isArray(r.items) ? r.items as string[] : [] }));
-  const pages = (await sql(`select * from public.pages where status = 'published' and deleted_at is null`)).map((r) => fromRow<Page>(r));
-  return { content, topics, series, pages };
+  const pages = (await sql(`select * from public.pages where status = 'published' and deleted_at is null and ${PUBLIC_READY}`)).map((r) => fromRow<Page>(r));
+  const institutions = (await sql(`select * from public.institutions where status = 'published' and deleted_at is null and ${PUBLIC_READY}`)).map((r) => fromRow<Institution>(r));
+  const events = (await sql(`select * from public.events where status = 'published' and deleted_at is null and ${PUBLIC_READY}`)).map((r) => fromRow<EventRecord>(r));
+  return { content, topics, series, pages, institutions, events };
 }
 
 async function run(userId: string | null, op: string, a: Record<string, unknown>, secret: string): Promise<unknown> {
@@ -165,9 +170,9 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         return series ? { series, items: await fetchContent(sql, series.items) } : null;
       }
       case 'institutions.list':
-        return (await sql(`select * from public.institutions where status = 'published' and deleted_at is null`)).map((r) => fromRow<Institution>(r));
+        return (await sql(`select * from public.institutions where status = 'published' and deleted_at is null and ${PUBLIC_READY}`)).map((r) => fromRow<Institution>(r));
       case 'events.list':
-        return (await sql(`select * from public.events where status = 'published' and deleted_at is null`)).map((r) => fromRow<EventRecord>(r));
+        return (await sql(`select * from public.events where status = 'published' and deleted_at is null and ${PUBLIC_READY} order by event_date nulls last, title`)).map((r) => fromRow<EventRecord>(r));
       case 'archives.list':
         return (await sql(`select * from public.source_archives`)).map((r) => fromRow<SourceArchive>(r));
       case 'page.get': {
@@ -201,6 +206,9 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const where = [`(($1::bool and deleted_at is not null) or (not $1::bool and deleted_at is null))`];
         if (opts.status) { params.push(opts.status); where.push(`status = $${params.length}`); }
         if (opts.type && entity === 'content') { params.push(opts.type); where.push(`type = $${params.length}`); }
+        if (opts.scheduled && (entity === 'content' || entity === 'pages' || entity === 'institutions' || entity === 'events')) {
+          where.push(`publish_at is not null and publish_at > now()`);
+        }
         if (opts.q?.trim()) { params.push(like(opts.q)); where.push(`${SEARCH_COL[entity]} ilike '%' || $${params.length} || '%'`); }
         const sort = opts.sort ?? 'updated';
         const order = sort === 'title' ? `${TITLE_COL[entity]} asc` : sort === 'status' ? `status asc, updated_at desc` : `updated_at desc`;
@@ -230,7 +238,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
           const c = a.data as Partial<ContentItem>;
           if (c.topicIds?.length) await sql(`insert into public.content_topics (content_id, topic_id) select $1, x from unnest($2::uuid[]) x`, [id, c.topicIds]);
           if (c.bookDetails) {
-            const b = vals({ ...c.bookDetails, contentId: id }, ['content_id', 'author_text', 'editor_text', 'publisher', 'authored_by_rabbi', 'cover_path', 'pdf_access', 'located_status']);
+            const b = vals({ ...c.bookDetails, contentId: id }, BOOK_COLS);
             await sql(`insert into public.book_details (${b.cols.join(', ')}) values (${b.cols.map((_, i) => `$${i + 1}${b.casts[i]}`).join(', ')})`, b.params);
           }
         }
@@ -254,7 +262,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
           }
           if (c.bookDetails !== undefined) {
             if (c.bookDetails) {
-              const b = vals({ ...c.bookDetails, contentId: a.id }, ['content_id', 'author_text', 'editor_text', 'publisher', 'authored_by_rabbi', 'cover_path', 'pdf_access', 'located_status']);
+              const b = vals({ ...c.bookDetails, contentId: a.id }, BOOK_COLS);
               const upd = b.cols.filter((c) => c !== 'content_id').map((c) => `${c} = excluded.${c}`).join(', ');
               await sql(`insert into public.book_details (${b.cols.join(', ')}) values (${b.cols.map((_, i) => `$${i + 1}${b.casts[i]}`).join(', ')}) on conflict (content_id) do update set ${upd}`, b.params);
             } else await sql(`delete from public.book_details where content_id = $1`, [a.id]);
@@ -282,8 +290,16 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
       }
       case 'admin.audit': {
         const page = Math.max(1, Number(a.page ?? 1));
-        const q = like(String((a.opts as { q?: string } | undefined)?.q ?? ''));
-        const rows = await sql(`select *, count(*) over () as total from public.audit_log where ($1 = '' or action ilike '%' || $1 || '%' or entity ilike '%' || $1 || '%') order by created_at desc limit 50 offset $2`, [q, (page - 1) * 50]);
+        const opts = (a.opts ?? {}) as { q?: string; entity?: string };
+        const q = like(String(opts.q ?? ''));
+        const entity = String(opts.entity ?? '');
+        const rows = await sql(
+          `select *, count(*) over () as total from public.audit_log
+           where ($1 = '' or action ilike '%' || $1 || '%' or entity ilike '%' || $1 || '%' or coalesce(meta::text, '') ilike '%' || $1 || '%')
+             and ($2 = '' or entity = $2)
+           order by created_at desc limit 50 offset $3`,
+          [q, entity, (page - 1) * 50],
+        );
         return { items: rows.map((r) => ({ ...fromRow<{ id: unknown }>(r), id: String(r.id) })), total: Number(rows[0]?.total ?? 0), page, pageSize: 50 };
       }
       case 'admin.listMedia': {
@@ -456,6 +472,26 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
           out[t] = await sql(`select * from public.${t} limit 10000`);
         }
         return out;
+      }
+      case 'admin.contacts': {
+        const page = Math.max(1, Number(a.page ?? 1));
+        const pageSize = Math.min(50, Math.max(1, Number(a.pageSize ?? 25)));
+        const params: unknown[] = [];
+        const where = ['true'];
+        if (typeof a.status === 'string' && a.status) { params.push(a.status); where.push(`status = $${params.length}`); }
+        if (typeof a.q === 'string' && a.q.trim()) { params.push(a.q.trim().replace(/[%_\\]/g, ' ')); where.push(`(subject ilike '%' || $${params.length} || '%' or email ilike '%' || $${params.length} || '%' or coalesce(name,'') ilike '%' || $${params.length} || '%')`); }
+        params.push(pageSize, (page - 1) * pageSize);
+        const rows = await sql(`select *, count(*) over () as total from public.contact_messages where ${where.join(' and ')} order by created_at desc limit $${params.length - 1} offset $${params.length}`, params);
+        return {
+          items: rows.map((r) => { const copy = { ...r }; delete copy.total; return fromRow<ContactMessage>(copy); }),
+          total: Number(rows[0]?.total ?? 0), page, pageSize,
+        };
+      }
+      case 'admin.contactStatus': {
+        const status = String(a.status ?? '');
+        if (!['new', 'read', 'archived'].includes(status)) throw new ApiError(400, 'סטטוס לא מוכר');
+        await mustWrite(sql, `update public.contact_messages set status = $1, read_at = case when $1 = 'new' then null else coalesce(read_at, now()) end where id = $2 returning id`, [status, a.id], 'עדכון הפנייה');
+        return { ok: true };
       }
       case 'admin.signedUrl': {
         const seconds = Math.min(600, Math.max(30, Number(a.seconds ?? 300)));

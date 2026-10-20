@@ -4,8 +4,11 @@ import type { ContentItem, ContentQuery, PageResult, Series, Topic } from './typ
 // Public listing semantics shared by the demo repository and tests.
 // Mirrors public.search_content(): published + not deleted, token AND match, sort options.
 
-export function isPublic(c: { status: string; deletedAt: string | null }): boolean {
-  return c.status === 'published' && c.deletedAt === null;
+export function isPublic(c: { status: string; deletedAt: string | null; publishAt?: string | null }, now = Date.now()): boolean {
+  if (c.status !== 'published' || c.deletedAt !== null) return false;
+  if (!c.publishAt) return true;
+  const t = Date.parse(c.publishAt);
+  return !Number.isNaN(t) && t <= now;
 }
 
 export function applyQuery(all: ContentItem[], q: ContentQuery, topics: Topic[], series: Series[]): PageResult<ContentItem> {

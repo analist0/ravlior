@@ -16,4 +16,5 @@ export interface DataClient {
   listUsers: () => Promise<{ id: string; email: string | null; display_name: string | null }[]>;
   allRoles: () => Promise<{ user_id: string; role: string }[]>;
   invite: (email: string, invitedBy: string) => Promise<{ token: string; expiresAt: string }>;
+  insertContact: (row: { name: string | null; email: string; subject: string; body: string }) => Promise<void>;
 }

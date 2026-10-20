@@ -50,6 +50,9 @@ export async function createApiRepository(): Promise<Repository> {
     getModules: () => rpc('modules'),
     submitQuestion: (input: QuestionInput) => call('/api/questions', { method: 'POST', body: JSON.stringify(input) }),
     trackQuestion: (code, token) => rpc('track', { code, token }),
+    async submitContact(input) {
+      await call('/api/contact', { method: 'POST', body: JSON.stringify(input) });
+    },
     async answerAudioUrl(code, token) {
       const body = await call<{ url: string }>('/api/questions/voice', { method: 'POST', body: JSON.stringify({ code, token }) });
       return abs(body.url);
@@ -143,6 +146,8 @@ export async function createApiRepository(): Promise<Repository> {
     commitImport: (rows) => rpc('admin.commitImport', { rows }),
     exportAll: () => rpc('admin.export'),
     probeUrl: (url) => call('/api/import/probe', { method: 'POST', body: JSON.stringify({ url }) }),
+    listContacts: (opts) => rpc('admin.contacts', opts),
+    setContactStatus: (id, status) => rpc('admin.contactStatus', { id, status }),
   };
   repo.admin = admin;
   return repo;

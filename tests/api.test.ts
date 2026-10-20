@@ -22,6 +22,7 @@ function mockDeps(over: Partial<Deps> = {}) {
       listUsers: async () => [],
       allRoles: async () => [],
       invite: async () => ({ token: 'invite-token', expiresAt: new Date(0).toISOString() }),
+      insertContact: async (r: Record<string, unknown>) => { rows.push({ kind: 'contact', ...r }); },
     },
     ...over,
   };
@@ -80,6 +81,22 @@ test('probe: requires staff; SSRF errors surface as 400', async () => {
   assert.equal(ok.status, 200);
   assert.equal(((await ok.json()) as { playableNatively: boolean }).playableNatively, true);
   assert.equal((await handle(post('/api/import/probe', { url: 'https://127.0.0.1/x' }, { authorization: 'Bearer jwt-editor' }), '6.6.6.6', deps)).status, 400);
+});
+
+test('contact: stores the message, refuses bots, and does not fake success offline', async () => {
+  const { deps, rows } = mockDeps();
+  const now = Date.now();
+  deps.now = () => now;
+  const msg = { name: 'דוד', email: 'a@b.co', subject: 'שלום', body: 'פנייה כללית לבדיקת השרת', website: '', startedAt: now - 5000 };
+  const res = await handle(post('/api/contact', msg), '8.8.8.8', deps);
+  assert.equal(res.status, 201);
+  assert.equal(rows.filter((r) => r.kind === 'contact').length, 1);
+  assert.equal((await handle(post('/api/contact', { ...msg, website: 'x' }), '8.8.8.9', deps)).status, 400);
+  assert.equal((await handle(post('/api/contact', { ...msg, email: 'bad' }), '8.8.8.10', deps)).status, 422);
+  const offline = mockDeps({ client: null });
+  offline.deps.env.configured = false;
+  offline.deps.now = () => now;
+  assert.equal((await handle(post('/api/contact', msg), '8.8.8.11', offline.deps)).status, 503);
 });
 
 test('admin users endpoint requires admin/owner', async () => {

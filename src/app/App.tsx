@@ -22,6 +22,8 @@ const SeriesPage = lazy(() => import('../pages/Series.tsx').then((m) => ({ defau
 const TopicsList = lazy(() => import('../pages/Topics.tsx').then((m) => ({ default: m.TopicsList })));
 const TopicPage = lazy(() => import('../pages/Topics.tsx').then((m) => ({ default: m.TopicPage })));
 const BooksPage = lazy(() => import('../pages/Books.tsx'));
+const BookPage = lazy(() => import('../pages/BookPage.tsx'));
+const EventsPage = lazy(() => import('../pages/EventsPage.tsx'));
 const ResponsaList = lazy(() => import('../pages/Responsa.tsx').then((m) => ({ default: m.ResponsaList })));
 const ResponsaItem = lazy(() => import('../pages/Responsa.tsx').then((m) => ({ default: m.ResponsaItem })));
 const AskPage = lazy(() => import('../pages/Ask.tsx').then((m) => ({ default: m.AskPage })));
@@ -45,6 +47,8 @@ const ROUTES: Route[] = [
   ['/topics', TopicsList],
   ['/topics/:slug', TopicPage],
   ['/books', BooksPage],
+  ['/books/:slug', BookPage],
+  ['/events', EventsPage],
   ['/responsa', ResponsaList],
   ['/responsa/:slug', ResponsaItem],
   ['/ask', AskPage],

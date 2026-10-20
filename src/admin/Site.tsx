@@ -6,10 +6,41 @@ import { MODULES, validateToggle } from '../modules/manifest.ts';
 import type { HomeSection, Menu, MenuItem, ModuleState } from '../shared/types.ts';
 import { useAdmin } from './AdminApp.tsx';
 import { isAdmin } from '../shared/workflow.ts';
+import { useDragReorder } from './reorder.tsx';
 
 const HOME_LABEL: Record<HomeSection['kind'], string> = {
   actions: 'ארבע פעולות ראשיות', continue: 'המשך האזנה (מקומי למשתמש)', featured: 'שיעור נבחר', latest: 'חדשים', topics: 'נושאים', series: 'סדרות', books: 'ספרים', answers: 'תשובות אחרונות',
 };
+
+function MenuBlock({ menu, onChange, onSave }: { menu: Menu; onChange: (items: MenuItem[]) => void; onSave: () => void }) {
+  const drag = useDragReorder(menu.items.length, (from, to) => {
+    const n = [...menu.items];
+    const [row] = n.splice(from, 1);
+    n.splice(to, 0, row!);
+    onChange(n);
+  });
+  return (
+    <section className="panel" style={{ marginBottom: 'var(--s-4)' }}>
+      <h2>{menu.location === 'header' ? 'תפריט עליון' : 'תפריט תחתון'}</h2>
+      <p className="soft">גררו לשינוי סדר, או השתמשו בחצים.</p>
+      <ol className="reorder-list">
+        {menu.items.map((it, i) => (
+          <li key={i} style={{ flexWrap: 'wrap' }} {...drag.bind(i)}>
+            <div style={{ flex: '1 1 140px' }}><TextField label="תווית" value={it.label} onChange={(e) => onChange(menu.items.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
+            <div style={{ flex: '1 1 160px' }}><TextField label="קישור" dir="ltr" value={it.href} onChange={(e) => onChange(menu.items.map((x, j) => (j === i ? { ...x, href: e.target.value } : x)))} /></div>
+            <IconButton icon="up" label={`העלאה: ${it.label}`} disabled={i === 0} onClick={() => { const n = [...menu.items]; [n[i - 1], n[i]] = [n[i]!, n[i - 1]!]; onChange(n); }} />
+            <IconButton icon="down" label={`הורדה: ${it.label}`} disabled={i === menu.items.length - 1} onClick={() => { const n = [...menu.items]; [n[i + 1], n[i]] = [n[i]!, n[i + 1]!]; onChange(n); }} />
+            <IconButton icon="trash" label={`מחיקה: ${it.label}`} onClick={() => onChange(menu.items.filter((_, j) => j !== i))} />
+          </li>
+        ))}
+      </ol>
+      <div className="row" style={{ marginTop: 'var(--s-3)' }}>
+        <Button variant="secondary" icon="plus" onClick={() => onChange([...menu.items, { label: '', href: '/' }])}>פריט חדש</Button>
+        <Button onClick={onSave}>שמירה</Button>
+      </div>
+    </section>
+  );
+}
 
 export function MenusEditor() {
   const repo = useRepo();
@@ -17,7 +48,6 @@ export function MenusEditor() {
   const r = useAsync(() => repo.getMenus(), [repo]);
   const [menus, setMenus] = useState<Menu[]>([]);
   useEffect(() => { if (r.data) setMenus(r.data); }, [r.data]);
-  const setItems = (id: string, items: MenuItem[]) => setMenus(menus.map((m) => (m.id === id ? { ...m, items } : m)));
   const save = async (m: Menu) => {
     const bad = m.items.find((i) => !i.label.trim() || !/^(\/|https:\/\/)/.test(i.href));
     if (bad) { toast('לכל פריט נדרשים תווית וקישור שמתחיל ב-/ או https://', { tone: 'error' }); return; }
@@ -29,24 +59,7 @@ export function MenusEditor() {
     <div>
       <h1>תפריטים</h1>
       {menus.map((m) => (
-        <section key={m.id} className="panel" style={{ marginBottom: 'var(--s-4)' }}>
-          <h2>{m.location === 'header' ? 'תפריט עליון' : 'תפריט תחתון'}</h2>
-          <ol className="reorder-list">
-            {m.items.map((it, i) => (
-              <li key={i} style={{ flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 140px' }}><TextField label="תווית" value={it.label} onChange={(e) => setItems(m.id, m.items.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
-                <div style={{ flex: '1 1 160px' }}><TextField label="קישור" dir="ltr" value={it.href} onChange={(e) => setItems(m.id, m.items.map((x, j) => (j === i ? { ...x, href: e.target.value } : x)))} /></div>
-                <IconButton icon="up" label={`העלאה: ${it.label}`} disabled={i === 0} onClick={() => { const n = [...m.items]; [n[i - 1], n[i]] = [n[i]!, n[i - 1]!]; setItems(m.id, n); }} />
-                <IconButton icon="down" label={`הורדה: ${it.label}`} disabled={i === m.items.length - 1} onClick={() => { const n = [...m.items]; [n[i + 1], n[i]] = [n[i]!, n[i + 1]!]; setItems(m.id, n); }} />
-                <IconButton icon="trash" label={`מחיקה: ${it.label}`} onClick={() => setItems(m.id, m.items.filter((_, j) => j !== i))} />
-              </li>
-            ))}
-          </ol>
-          <div className="row" style={{ marginTop: 'var(--s-3)' }}>
-            <Button variant="secondary" icon="plus" onClick={() => setItems(m.id, [...m.items, { label: '', href: '/' }])}>פריט חדש</Button>
-            <Button onClick={() => void save(m)}>שמירה</Button>
-          </div>
-        </section>
+        <MenuBlock key={m.id} menu={m} onChange={(items) => setMenus(menus.map((x) => (x.id === m.id ? { ...x, items } : x)))} onSave={() => void save(m)} />
       ))}
     </div>
   );
@@ -58,6 +71,12 @@ export function HomeEditor() {
   const r = useAsync(() => repo.getHomeSections(), [repo]);
   const [s, setS] = useState<HomeSection[]>([]);
   useEffect(() => { if (r.data) setS(r.data); }, [r.data]);
+  const drag = useDragReorder(s.length, (from, to) => {
+    const n = [...s];
+    const [row] = n.splice(from, 1);
+    n.splice(to, 0, row!);
+    setS(n);
+  });
   const save = async () => {
     try { setS(await repo.admin.saveHomeSections(s)); toast('דף הבית נשמר. השינוי מוצג באתר מיד (רענון).'); } catch (e) { toast(errorMessage(e), { tone: 'error' }); r.reload(); }
   };
@@ -69,7 +88,7 @@ export function HomeEditor() {
       <p className="muted">בחרו אילו מקטעים יוצגו ובאיזה סדר. השינוי נקרא מהמסד בכל טעינה — ללא בנייה מחדש.</p>
       <ol className="reorder-list">
         {s.map((x, i) => (
-          <li key={x.id} style={{ flexWrap: 'wrap' }}>
+          <li key={x.id} style={{ flexWrap: 'wrap' }} {...drag.bind(i)}>
             <Checkbox label="" aria-label={`הצגת ${HOME_LABEL[x.kind]}`} checked={x.enabled} onChange={(e) => setS(s.map((y) => (y.id === x.id ? { ...y, enabled: e.target.checked } : y)))} />
             <Badge>{HOME_LABEL[x.kind]}</Badge>
             <div style={{ flex: '1 1 160px' }}><TextField label="כותרת המקטע" value={x.title} onChange={(e) => setS(s.map((y) => (y.id === x.id ? { ...y, title: e.target.value } : y)))} /></div>

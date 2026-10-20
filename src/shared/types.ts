@@ -92,7 +92,11 @@ export interface ContentItem {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  /** When set, a published row stays off the public site until this moment. */
+  publishAt?: string | null;
 }
+
+export interface TocEntry { title: string }
 
 export interface BookDetails {
   authorText: string | null;
@@ -102,6 +106,12 @@ export interface BookDetails {
   coverPath: string | null;
   pdfAccess: 'none' | 'public' | 'restricted';
   locatedStatus: string; // human text, e.g. "דווח על קיומו; PDF לא אותר"
+  /** Stored outline. Empty unless an editor entered real chapter titles. */
+  toc?: TocEntry[];
+  /** Sample reading blocks. Empty unless a permitted excerpt was entered. */
+  sample?: Block[];
+  purchaseUrl?: string | null;
+  donationUrl?: string | null;
 }
 
 export interface Topic {
@@ -136,7 +146,11 @@ export interface Institution {
   name: string;
   description: string | null;
   sourceUrls: string[];
+  /** A place name only when a source or the office supplied one. */
+  placeLabel?: string | null;
+  mapUrl?: string | null;
   status: ContentStatus;
+  publishAt?: string | null;
   version: number;
   deletedAt: string | null;
 }
@@ -150,7 +164,12 @@ export interface EventRecord {
   dateText: string | null;
   summary: string | null;
   sourceUrls: string[];
+  locationLabel?: string | null;
+  mapUrl?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
   status: ContentStatus;
+  publishAt?: string | null;
   version: number;
   deletedAt: string | null;
 }
@@ -171,8 +190,23 @@ export interface Page {
   description: string | null;
   blocks: Block[];
   status: ContentStatus;
+  publishAt?: string | null;
   version: number;
   deletedAt: string | null;
+}
+
+export const CONTACT_STATUSES = ['new', 'read', 'archived'] as const;
+export type ContactStatus = (typeof CONTACT_STATUSES)[number];
+
+export interface ContactMessage {
+  id: string;
+  name: string | null;
+  email: string;
+  subject: string;
+  body: string;
+  status: ContactStatus;
+  createdAt: string;
+  readAt: string | null;
 }
 
 export interface MenuItem { label: string; href: string }

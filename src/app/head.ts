@@ -18,8 +18,8 @@ function link(rel: string, href: string | null) {
   el.href = href;
 }
 
-export function useHead(opts: { title: string; description?: string | null; path?: string; noindex?: boolean; image?: string | null; type?: string }) {
-  const { title, description, path, noindex, image, type } = opts;
+export function useHead(opts: { title: string; description?: string | null; path?: string; noindex?: boolean; image?: string | null; type?: string; jsonLd?: unknown }) {
+  const { title, description, path, noindex, image, type, jsonLd } = opts;
   useEffect(() => {
     const full = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME} — תורתו של הרב ליאור כהן`;
     document.title = full;
@@ -33,5 +33,15 @@ export function useHead(opts: { title: string; description?: string | null; path
     meta('property', 'og:url', noindex ? null : url);
     meta('property', 'og:image', image ?? null);
     meta('property', 'og:locale', 'he_IL');
-  }, [title, description, path, noindex, image, type]);
+    const id = 'page-jsonld';
+    const prev = document.getElementById(id);
+    if (!jsonLd) prev?.remove();
+    else {
+      const el = prev ?? document.createElement('script');
+      el.id = id;
+      el.setAttribute('type', 'application/ld+json');
+      el.textContent = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+      if (!prev) document.head.appendChild(el);
+    }
+  }, [title, description, path, noindex, image, type, jsonLd]);
 }

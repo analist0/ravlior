@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useRouter } from '../app/router.tsx';
 import { errorMessage, useAsync, useRepo, type EntityName, type EntityRecord } from '../data/repo.ts';
 import { BlockRenderer } from '../components/Blocks.tsx';
@@ -8,6 +8,7 @@ import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, Checkbox, ErrorState, Notice, SelectField, Skeleton, TextArea, TextField } from '../components/ui.tsx';
 import { CONTENT_STATUS_LABEL, VersionConflictError, canEdit, isAdmin, nextContentStatuses } from '../shared/workflow.ts';
 import { sanitizeBlocks } from '../shared/blocks.ts';
+import { bookOffers, bookSample, bookToc } from '../shared/sections.ts';
 import type { Block, ContentItem, ContentStatus, Series } from '../shared/types.ts';
 import { useAdmin } from './AdminApp.tsx';
 import { ENTITIES, validateRecord, type FieldDef } from './entities.ts';
@@ -15,6 +16,13 @@ import { StatusBadge } from './EntityList.tsx';
 import { BlockEditor, BookDetailsEditor, RevisionsPanel, SeriesItemsEditor, SourcesEditor, StatusHelp, TopicsPicker, UrlsField } from './Panels.tsx';
 
 const WIDTHS: [number, string][] = [[360, 'טלפון'], [768, 'טאבלט'], [1200, 'מחשב']];
+
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 function RefSelect({ f, value, onChange }: { f: FieldDef; value: string | null; onChange: (v: string | null) => void }) {
   const repo = useRepo();
@@ -41,6 +49,7 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [preview, setPreview] = useState<number | null>(null);
+  const [autoNote, setAutoNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (id && rec.data) setDraft({ ...(rec.data as unknown as Record<string, unknown>) });
@@ -55,13 +64,13 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
     return () => removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  const set = (k: string, v: unknown) => { setDraft((d) => ({ ...d, [k]: v })); setDirty(true); };
+  const set = (k: string, v: unknown) => { setDraft((d) => ({ ...d, [k]: v })); setDirty(true); setAutoNote(null); };
   const current = rec.data as (EntityRecord & { status?: ContentStatus; deletedAt?: string | null; version: number }) | null | undefined;
   const readOnly = !canEdit(roles) && !roles.some((r) => r === 'reviewer' || r === 'rabbi');
   const blocksKey = cfg.fields.find((f) => f.type === 'blocks')?.key;
   const blockIssues = useMemo(() => (blocksKey ? sanitizeBlocks(draft[blocksKey] ?? []).issues : []), [draft, blocksKey]);
 
-  const save = async () => {
+  const save = async (opts?: { silent?: boolean }) => {
     const v = validateRecord(entity, draft);
     setErrors(v);
     if (Object.keys(v).length || blockIssues.length) { setSaveError({ message: 'יש שדות שדורשים תיקון.', conflict: false }); return; }
@@ -74,8 +83,9 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
         navigate(`/admin/${cfg.route}/${created.id}`, { replace: true });
       } else {
         await repo.admin.update(entity, id, draft as Partial<EntityRecord>, current!.version);
-        toast('נשמר');
         setDirty(false);
+        if (opts?.silent) setAutoNote('נשמר אוטומטית');
+        else toast('נשמר');
         rec.reload();
       }
     } catch (e) {
@@ -84,6 +94,13 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
       setBusy(false);
     }
   };
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    if (!id || !dirty || readOnly) return;
+    const t = setTimeout(() => { void saveRef.current({ silent: true }); }, 1600);
+    return () => clearTimeout(t);
+  }, [draft, dirty, id, readOnly]);
 
   const transition = async (to: ContentStatus) => {
     if (dirty && !(await confirm({ title: 'יש שינויים שלא נשמרו', body: 'שינוי הסטטוס לא ישמור את השינויים בטופס. להמשיך?', confirmLabel: 'המשך בלי לשמור' }))) return;
@@ -132,6 +149,11 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
       case 'textarea': return <div className="full" {...common}><TextArea label={f.label} value={(val as string) ?? ''} required={f.required} hint={f.hint} error={errors[f.key]} readOnly={readOnly} onChange={(e) => set(f.key, e.target.value || (f.required ? '' : null))} /></div>;
       case 'number': return <div {...common}><TextField label={f.label} type="number" inputMode="numeric" value={String(val ?? 0)} readOnly={readOnly} onChange={(e) => set(f.key, Number(e.target.value))} /></div>;
       case 'date': return <div {...common}><TextField label={f.label} type="date" dir="ltr" value={(val as string) ?? ''} hint={f.hint} readOnly={readOnly} onChange={(e) => set(f.key, e.target.value || null)} /></div>;
+      case 'datetime': {
+        const raw = (val as string) ?? '';
+        const local = raw ? toLocalInput(raw) : '';
+        return <div {...common}><TextField label={f.label} type="datetime-local" dir="ltr" value={local} hint={f.hint} readOnly={readOnly} onChange={(e) => set(f.key, e.target.value ? new Date(e.target.value).toISOString() : null)} /></div>;
+      }
       case 'checkbox': return <div {...common}><Checkbox label={f.label} checked={!!val} disabled={readOnly} onChange={(e) => set(f.key, e.target.checked)} /></div>;
       case 'select': return <div {...common}><SelectField label={f.label} value={(val as string) ?? ''} hint={f.hint} error={errors[f.key]} disabled={readOnly} onChange={(e) => set(f.key, e.target.value)}>{f.options!.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</SelectField></div>;
       case 'urls': return <div className="full" {...common}><UrlsField label={f.label} value={(val as string[]) ?? []} error={errors[f.key]} onChange={(v) => set(f.key, v)} /></div>;
@@ -157,6 +179,7 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
           {current && <Badge>v{current.version}</Badge>}
           {current?.deletedAt && <Badge tone="danger">בסל המחזור</Badge>}
           {dirty && <Badge tone="warn">שינויים לא שמורים</Badge>}
+          {autoNote && !dirty && <Badge tone="ok">{autoNote}</Badge>}
         </div>
       </div>
       {readOnly && <Notice icon="lock">צפייה בלבד — לתפקיד שלך אין הרשאת עריכה.</Notice>}
@@ -173,6 +196,26 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
             </>
           )}
           {entity === 'series' && id && current && <SeriesItemsEditor seriesId={id} initial={(current as Series).items} />}
+          <section className="panel" aria-labelledby="h-live">
+            <div className="spread">
+              <h2 id="h-live" style={{ margin: 0 }}>תצוגה לפני פרסום</h2>
+              <Button size="sm" variant="secondary" icon="eye" onClick={() => setPreview(preview === 768 ? null : 768)}>{preview ? 'סגירה' : 'פתיחה'}</Button>
+            </div>
+            {preview && (
+              <div className="preview-frame" style={{ width: `min(100%, ${preview}px)`, marginTop: 'var(--s-3)' }}>
+                <p className="soft">כך ייראה התוכן אחרי פרסום. עדיין לא ציבורי.</p>
+                <h1 style={{ fontSize: 'var(--step-3)' }}>{title}</h1>
+                {typeof draft.summary === 'string' && draft.summary && <p>{draft.summary}</p>}
+                {blocksKey && <BlockRenderer blocks={(draft[blocksKey] as Block[]) ?? []} />}
+                {entity === 'content' && content?.bookDetails && (
+                  <p className="soft">
+                    תוכן עניינים: {bookToc(content.bookDetails).length || 'לא הוגדר'} · קטע לקריאה: {bookSample(content.bookDetails).length ? 'כן' : 'לא'}
+                    {bookOffers(content.bookDetails).purchase ? ' · רכישה' : ''}{bookOffers(content.bookDetails).donation ? ' · תרומה' : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
           {blocksKey && (
             <section className="panel" aria-labelledby="h-prev">
               <div className="spread">
@@ -237,7 +280,7 @@ export default function EntityEditor({ entity, id }: { entity: EntityName; id: s
               </div>
             </section>
           )}
-          {id && <RevisionsPanel entity={entity} id={id} onRestore={(snap) => { const { version: _v, status: _s, ...rest } = snap; void _v; void _s; setDraft((d) => ({ ...d, ...rest })); setDirty(true); }} />}
+          {id && <RevisionsPanel entity={entity} id={id} current={draft} onRestore={(snap) => { const { version: _v, status: _s, ...rest } = snap; void _v; void _s; setDraft((d) => ({ ...d, ...rest })); setDirty(true); }} />}
           {content?.provenance && content.provenance.length > 0 && (
             <section className="panel">
               <h2>מקור הרשומה</h2>

@@ -31,6 +31,7 @@ const InstitutionsPage = lazy(() => import('../pages/About.tsx').then((m) => ({ 
 const SourcesPage = lazy(() => import('../pages/About.tsx').then((m) => ({ default: m.SourcesPage })));
 const ContentPage = lazy(() => import('../pages/ContentPage.tsx'));
 const FavoritesPage = lazy(() => import('../pages/Favorites.tsx'));
+const AcceptPage = lazy(() => import('../pages/Accept.tsx'));
 const ParashaShelf = lazy(() => import('../modules/parasha-shelf/ParashaShelf.tsx'));
 const AdminApp = lazy(() => import('../admin/AdminApp.tsx'));
 
@@ -52,6 +53,7 @@ const ROUTES: Route[] = [
   ['/institutions', InstitutionsPage],
   ['/sources', SourcesPage],
   ['/favorites', FavoritesPage],
+  ['/accept', AcceptPage],
   ['/p/:slug', ContentPage],
   ['/parasha', ParashaShelf],
 ];
@@ -135,7 +137,7 @@ function RepoGate({ children }: { children: (repo: Repository) => ReactNode }) {
   useEffect(() => {
     const load = IS_DEMO
       ? import('../data/demo-repo.ts').then((m) => m.createDemoRepository())
-      : import('../data/supabase-repo.ts').then((m) => m.createSupabaseRepository());
+      : import('../data/api-repo.ts').then((m) => m.createApiRepository());
     load.then(setRepo, (e: unknown) => setError(e instanceof Error ? e : new Error(String(e))));
   }, []);
   if (error) return <div className="container section"><ErrorState error={error} onRetry={() => location.reload()} /></div>;

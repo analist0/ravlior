@@ -1,4 +1,5 @@
-// Live E2E against the CONNECTED Supabase project (read-only; anonymous visitor).
+// Historical live E2E for the previous Supabase connection. Connected mode is now the site API.
+// Do not run this against the live Supabase project.
 // Run: npm run build && npx vite preview --port 4180 &  then  node tests/e2e/live-supabase.mjs [screenshot-dir]
 // Expected numbers come from the imported seed: 209 published items (7 drafts hidden).
 // Network failures are retried at most 3 times via the page's own "retry" button and are reported, never hidden.

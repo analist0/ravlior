@@ -1,19 +1,21 @@
 // Server-only configuration. Never import this from src/ (browser code).
 export interface ServerEnv {
-  supabaseUrl: string;
-  secretKey: string;
+  databaseUrl: string;
+  authSecret: string;
   rateSalt: string;
   importAllowlist: string[];
+  siteUrl: string;
   configured: boolean;
 }
 export function readEnv(env: Record<string, string | undefined> = process.env): ServerEnv {
-  const supabaseUrl = (env.SUPABASE_URL ?? '').replace(/\/$/, '');
-  const secretKey = env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const databaseUrl = env.DATABASE_URL ?? '';
+  const authSecret = env.AUTH_SECRET ?? '';
   return {
-    supabaseUrl,
-    secretKey,
+    databaseUrl,
+    authSecret,
     rateSalt: env.RATE_LIMIT_SALT || 'dev-only-salt-change-me',
     importAllowlist: (env.IMPORT_URL_ALLOWLIST ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
-    configured: !!supabaseUrl && !!secretKey,
+    siteUrl: (env.VITE_SITE_URL ?? env.SITE_URL ?? '').replace(/\/$/, ''),
+    configured: databaseUrl.length > 0 && authSecret.length >= 16,
   };
 }

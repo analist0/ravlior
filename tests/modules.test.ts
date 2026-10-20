@@ -15,7 +15,7 @@ test('module manifests satisfy the contract', () => {
     assert.equal(m.featureFlag, `module.${m.id}`);
     for (const r of m.routes) assert.ok(r.startsWith('/'), r);
     for (const p of m.permissions) for (const role of p.roles) assert.ok(ROLES.includes(role), role);
-    for (const f of m.migrations) assert.ok(existsSync(new URL(`../supabase/migrations/${f}`, import.meta.url)), `missing migration ${f}`);
+    for (const f of m.migrations) assert.ok(existsSync(new URL(`../neon/migrations/${f}`, import.meta.url)), `missing migration ${f}`);
     for (const s of m.settings) assert.equal(typeof s.default, s.type === 'number' ? 'number' : s.type === 'boolean' ? 'boolean' : 'string');
   }
   for (const m of MODULES) for (const d of m.dependsOn) assert.ok(ids.has(d), `${m.id} depends on unknown ${d}`);

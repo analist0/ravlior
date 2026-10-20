@@ -206,12 +206,15 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     async getSession() { return session; },
     onAuthChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     async signIn() {
-      throw new Error('במצב הדגמה אין חיבור ל-Supabase Auth. בחרו תפקיד הדגמה.');
+      throw new Error('במצב הדגמה אין חשבון אמיתי. בחרו תפקיד הדגמה.');
     },
     async signOut() {
       session = null;
       removeKey(SESSION_KEY);
       listeners.forEach((l) => l(null));
+    },
+    async acceptInvite() {
+      throw new Error('הזמנות פועלות רק כשהאתר מחובר למסד.');
     },
     async demoSignIn(role) {
       const u = db.users.find((x) => x.roles.includes(role)) ?? DEMO_USERS[0]!;
@@ -592,6 +595,7 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       db.users.push({ userId: `demo-${uid().slice(0, 8)}`, email, displayName: null, roles: ['viewer'] });
       log('insert', 'users', email.replace(/(.).+(@.*)/, '$1***$2'));
       persist();
+      return { token: '', expiresAt: '' };
     },
 
     async upload(bucket: BucketId, file, onProgress, signal) {

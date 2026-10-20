@@ -4,6 +4,7 @@ import { mergeNav, type SiteHit } from '../shared/site-search.ts';
 import type { UpdateInput } from '../shared/updates.ts';
 import { BUCKETS, checkUpload, storagePath, type BucketId } from '../shared/upload-policy.ts';
 import { PermissionError, VersionConflictError } from '../shared/workflow.ts';
+import type { TopicShelf } from '../shared/topic-shelf.ts';
 import type { ContentItem, ContentQuery, PublicQuestion, Role } from '../shared/types.ts';
 import type { AdminRepo, QuestionInput, Repository, Session } from './repo.ts';
 
@@ -41,6 +42,7 @@ export async function createApiRepository(): Promise<Repository> {
     getContentByIds: (ids) => rpc('content.byIds', { ids }),
     related: (item, limit) => rpc('content.related', { item, limit }),
     listTopics: () => rpc('topics.list'),
+    topicShelves: () => rpc<TopicShelf[]>('topics.shelves'),
     listSeries: () => rpc('series.list'),
     getSeries: (slug) => rpc('series.get', { slug }),
     listInstitutions: () => rpc('institutions.list'),

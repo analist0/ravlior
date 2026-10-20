@@ -25,11 +25,11 @@ export function ContactForm() {
       setError(errorMessage(e));
     } finally { setBusy(false); }
   };
-  if (done) return <Notice tone="ok" icon="check">הפנייה התקבלה ונשמרה לצוות. אין כאן כתובת רשמית של הרב — זו תיבה של האתר בלבד.</Notice>;
+  if (done) return <Notice tone="ok" icon="check">הפנייה התקבלה ונשמרה לצוות האתר. אין כאן כתובת רשמית של הרב.</Notice>;
   return (
-    <form className="form-grid" onSubmit={(e) => { e.preventDefault(); void submit(); }} aria-labelledby="h-contact-form">
-      <h2 id="h-contact-form">טופס פנייה לאתר</h2>
-      <p className="soft">פרטי קשר רשמיים של הרב ושל המוסדות לא אומתו ולכן אינם מוצגים. הפנייה נשמרת לצוות האתר. לשאלה הלכתית השתמשו בטופס השאלה.</p>
+    <form className="form-grid qa-panel contact-letter" onSubmit={(e) => { e.preventDefault(); void submit(); }} aria-labelledby="h-contact-form">
+      <h2 id="h-contact-form">מכתב לצוות האתר</h2>
+      <p className="soft">פרטי קשר רשמיים של הרב ושל המוסדות לא אומתו ולכן אינם מוצגים. הפנייה נשמרת כאן לצוות. לשאלה הלכתית יש טופס נפרד.</p>
       {error && <div role="alert"><Notice tone="warn" icon="alert">{error}</Notice></div>}
       <TextField label="שם (רשות)" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
       <TextField label="דוא״ל" type="email" dir="ltr" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />

@@ -10,12 +10,12 @@ export const TYPE_ICON: Record<ContentType, IconName> = {
   video: 'watch', audio: 'listen', short: 'watch', live: 'watch', book: 'read', leaflet: 'file', article: 'read', answer: 'ask',
 };
 
-type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' | 'danger'; size?: 'sm' | 'md'; icon?: IconName; busy?: boolean };
-export function Button({ variant = 'primary', size = 'md', icon, busy, children, className, disabled, ...rest }: BtnProps) {
+type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' | 'danger'; tone?: 'gold'; size?: 'sm' | 'md'; icon?: IconName; busy?: boolean };
+export function Button({ variant = 'primary', tone, size = 'md', icon, busy, children, className, disabled, ...rest }: BtnProps) {
   return (
     <button
       type="button"
-      className={`btn ${variant !== 'primary' ? `btn-${variant}` : ''} ${size === 'sm' ? 'btn-sm' : ''} ${className ?? ''}`}
+      className={`btn ${variant !== 'primary' ? `btn-${variant}` : ''} ${tone === 'gold' ? 'btn-gold' : ''} ${size === 'sm' ? 'btn-sm' : ''} ${className ?? ''}`}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
       {...rest}
@@ -26,9 +26,9 @@ export function Button({ variant = 'primary', size = 'md', icon, busy, children,
   );
 }
 
-export function LinkButton({ to, variant = 'primary', icon, children, size }: { to: string; variant?: 'primary' | 'secondary' | 'ghost'; icon?: IconName; children: ReactNode; size?: 'sm' }) {
+export function LinkButton({ to, variant = 'primary', tone, icon, children, size }: { to: string; variant?: 'primary' | 'secondary' | 'ghost'; tone?: 'gold'; icon?: IconName; children: ReactNode; size?: 'sm' }) {
   const external = /^https?:/.test(to);
-  const cls = `btn ${variant !== 'primary' ? `btn-${variant}` : ''} ${size === 'sm' ? 'btn-sm' : ''}`;
+  const cls = `btn ${variant !== 'primary' ? `btn-${variant}` : ''} ${tone === 'gold' ? 'btn-gold' : ''} ${size === 'sm' ? 'btn-sm' : ''}`;
   if (external)
     return (
       <a className={cls} href={to} target="_blank" rel="noopener noreferrer">

@@ -88,7 +88,7 @@ export const MODULES: ModuleManifest[] = [
   },
   {
     id: 'pages', version: '1.0.0', name: 'עמודים ותפריטים', description: 'עמודי תוכן בבלוקים ותפריטי ניווט.',
-    core: true, dependsOn: [], routes: ['/p/:slug', '/about'], adminSections: [{ id: 'pages', label: 'עמודים' }, { id: 'menus', label: 'תפריטים' }],
+    core: true, dependsOn: [], routes: ['/p/:slug', '/about', '/support'], adminSections: [{ id: 'pages', label: 'עמודים' }, { id: 'menus', label: 'תפריטים' }],
     navigation: [], permissions: [{ action: 'pages.edit', roles: EDIT }], settings: [], migrations: CORE_SQL,
     featureFlag: 'module.pages', enabledByDefault: true,
   },

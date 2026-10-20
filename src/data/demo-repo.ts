@@ -11,6 +11,7 @@ import { previewRows } from '../shared/importer.ts';
 import { chaptersFromUnknown, cleanTranscript } from '../shared/lesson.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
+import { buildTopicShelves } from '../shared/topic-shelf.ts';
 import { validateContact } from '../shared/sections.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
 import { applyAnswerEdit, applyPublicEdit, buildPublicFromApproved, isOverdue } from '../shared/responsa.ts';
@@ -201,6 +202,10 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     },
     async listTopics() {
       return clone(pub(db.topics).sort((a, b) => a.sort - b.sort));
+    },
+    async topicShelves() {
+      const topics = pub(db.topics).sort((a, b) => a.sort - b.sort);
+      return buildTopicShelves(topics, db.content.filter(isPublic));
     },
     async listSeries() {
       return clone(pub(db.series).sort((a, b) => a.sort - b.sort));

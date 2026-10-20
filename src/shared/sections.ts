@@ -34,6 +34,25 @@ export function bookToc(details: BookDetails | null | undefined): TocItem[] {
   return out;
 }
 
+export interface TocAnchor extends TocItem { blockIndex: number | null }
+
+/** Match saved chapter titles to heading blocks, in order. A title with no heading is listed, not linked. */
+export function tocAnchors(blocks: readonly { type: string; text?: string }[], toc: readonly TocItem[]): TocAnchor[] {
+  const used = new Set<number>();
+  return toc.map((item) => {
+    const blockIndex = blocks.findIndex((b, i) => {
+      if (used.has(i) || b.type !== 'heading') return false;
+      return (b.text ?? '').replace(/\s+/g, ' ').trim() === item.title;
+    });
+    if (blockIndex >= 0) used.add(blockIndex);
+    return { id: item.id, title: item.title, blockIndex: blockIndex >= 0 ? blockIndex : null };
+  });
+}
+
+export function linkHost(url: string): string {
+  try { return decodeURI(new URL(url).hostname.replace(/^www\./, '')); } catch { return url; }
+}
+
 export function bookSample(details: BookDetails | null | undefined): Block[] {
   const raw = details?.sample;
   if (!Array.isArray(raw)) return [];

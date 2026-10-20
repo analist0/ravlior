@@ -32,6 +32,7 @@ const ResponsaItem = lazy(() => import('../pages/Responsa.tsx').then((m) => ({ d
 const AskPage = lazy(() => import('../pages/Ask.tsx').then((m) => ({ default: m.AskPage })));
 const TrackPage = lazy(() => import('../pages/Ask.tsx').then((m) => ({ default: m.TrackPage })));
 const AboutPage = lazy(() => import('../pages/About.tsx').then((m) => ({ default: m.AboutPage })));
+const SupportPage = lazy(() => import('../pages/About.tsx').then((m) => ({ default: m.SupportPage })));
 const InstitutionsPage = lazy(() => import('../pages/About.tsx').then((m) => ({ default: m.InstitutionsPage })));
 const SourcesPage = lazy(() => import('../pages/About.tsx').then((m) => ({ default: m.SourcesPage })));
 const ContentPage = lazy(() => import('../pages/ContentPage.tsx'));
@@ -60,6 +61,7 @@ const ROUTES: Route[] = [
   ['/ask', AskPage],
   ['/track', TrackPage],
   ['/about', AboutPage],
+  ['/support', SupportPage],
   ['/institutions', InstitutionsPage],
   ['/sources', SourcesPage],
   ['/favorites', FavoritesPage],
@@ -131,7 +133,7 @@ function PublicShell({ repo }: { repo: Repository | null }) {
       <DemoBanner />
       <Header menu={header} onSearch={() => setSearchOpen(true)} />
       <main id="main" tabIndex={-1}>{page}</main>
-      <Footer menu={footer} />
+      <Footer menu={footer} updates={!!repo} />
       <BottomNav onSearch={() => setSearchOpen(true)} />
       {repo && <SearchPanel open={searchOpen} onOpenChange={setSearchOpen} />}
     </RepoContext.Provider>

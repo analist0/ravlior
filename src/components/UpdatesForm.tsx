@@ -43,7 +43,7 @@ export function UpdatesForm() {
   return (
     <form className="updates" onSubmit={(e) => { e.preventDefault(); void submit(); }} noValidate>
       <h2>עדכונים</h2>
-      <p>שמירת כתובת לדוא״ל או לוואטסאפ. לא נשלח דבר עד שיופעל שירות שליחה.</p>
+      <p>אם תרצו, נשמור כתובת כדי לעדכן כשיהיה על מה. כרגע האתר לא שולח דוא״ל ולא הודעות.</p>
       <div className="updates-switch segmented" role="group" aria-label="ערוץ עדכון">
         <button type="button" aria-pressed={channel === 'email'} onClick={() => setChannel('email')}>דוא״ל</button>
         <button type="button" aria-pressed={channel === 'whatsapp'} onClick={() => setChannel('whatsapp')}>וואטסאפ</button>
@@ -71,7 +71,7 @@ export function UpdatesForm() {
         <input id="updates-website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <div><Button type="submit" busy={busy}>{busy ? 'שומר…' : 'שמירה'}</Button></div>
+      <div><Button type="submit" busy={busy}>{busy ? 'שומר…' : 'שמירת הפרטים'}</Button></div>
     </form>
   );
 }

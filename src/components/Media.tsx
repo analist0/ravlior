@@ -133,14 +133,17 @@ export function MediaPlayer({ item, startAt = null, resume = true, notes = false
     const track = playableTrack(item)!;
     const active = player.isCurrent(item.id);
     return (
-      <div className="side-card stack">
-        <div className="spread">
-          <div className="row"><Icon name="listen" /> <strong>{source.storagePath ? 'הקלטה שמורה באתר' : 'הקלטה מקושרת'}</strong></div>
-          <button className="btn" onClick={() => (active ? player.toggle() : player.play(track))}>
-            <Icon name={active && player.playing ? 'pause' : 'play'} /> {active && player.playing ? 'השהיה' : 'האזנה ברקע'}
+      <div className="listen-desk">
+        <p className="eyebrow" style={{ margin: 0 }}>{source.storagePath ? 'הקלטה שמורה באתר' : 'הקלטה מקושרת'}</p>
+        <div className="row" style={{ alignItems: 'center' }}>
+          <button className="play-btn" onClick={() => (active ? player.toggle() : player.play(track))} aria-label={active && player.playing ? 'השהיה' : 'האזנה'}>
+            <Icon name={active && player.playing ? 'pause' : 'play'} />
           </button>
+          <div>
+            <strong>{active && player.playing ? 'מתנגן ברקע' : 'האזנה ברקע'}</strong>
+            <p className="soft" style={{ margin: 0 }}>{item.durationText ? <>משך <span className="ltr">{item.durationText}</span>. </> : null}ההאזנה נמשכת במעבר בין עמודים, ובמסך נעול אם הדפדפן מאפשר פקדי מדיה.</p>
+          </div>
         </div>
-        <p className="soft" style={{ margin: 0 }}>ההאזנה נמשכת במעבר בין עמודים, ובמסך נעול אם הדפדפן מאפשר פקדי מדיה.</p>
       </div>
     );
   }

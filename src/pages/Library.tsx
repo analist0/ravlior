@@ -6,6 +6,7 @@ import { useAsync, useRepo } from '../data/repo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { CardGrid, providerLabel } from '../components/Media.tsx';
 import { Swap } from '../components/Motion.tsx';
+import { PageIntro } from '../components/PageIntro.tsx';
 import { Breadcrumbs, Button, CardSkeletons, EmptyState, ErrorState, Pagination, SelectField, TYPE_LABEL } from '../components/ui.tsx';
 import { CONTENT_TYPES, type ContentQuery, type ContentType, type DatedFilter, type LengthBucket, type MediaProvider } from '../shared/types.ts';
 
@@ -58,18 +59,18 @@ export default function LibraryPage() {
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'ספרייה' }]} />
-      <header className="library-head">
-        <h1>ספריית השיעורים</h1>
-        <p>חיפוש וסינון לפי סוג, נושא, סדרה ומקור. התוצאות מתעלמות מניקוד ומגרשיים.</p>
-      </header>
+      <PageIntro mark eyebrow="עיון" title="ספריית השיעורים" lede="חיפוש לפי סוג, נושא, סדרה ומקור. ניקוד וגרשיים לא משנים את התוצאה." />
       <form className="filters" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: text, page: null }); }}>
         <div className="field">
           <label htmlFor="lib-q">חיפוש</label>
           <div className="row" style={{ flexWrap: 'nowrap' }}>
             <input id="lib-q" className="input" type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="למשל: תשעה באב, ארבעת המינים, מרן" enterKeyHint="search" />
-            <Button type="submit" icon="search" aria-label="חיפוש">חיפוש</Button>
+            <Button type="submit" tone="gold" icon="search" aria-label="חיפוש">חיפוש</Button>
           </div>
-          <span className="hint">החיפוש מתעלם מניקוד ומגרשיים. אין ניתוח דקדוקי של מילים (למשל תחיליות).</span>
+          <details className="soft">
+            <summary>איך החיפוש עובד</summary>
+            <span className="hint">החיפוש מתעלם מניקוד ומגרשיים. אין ניתוח דקדוקי של מילים, למשל תחיליות כמו ו׳ או ב׳.</span>
+          </details>
         </div>
         <div className="chip-row" role="group" aria-label="סוג תוכן">
           <button type="button" className="chip" aria-pressed={!q.type} onClick={() => update({ type: null, page: null })}>הכול</button>
@@ -116,6 +117,18 @@ export default function LibraryPage() {
         </div>
         </details>
       </form>
+
+      {active > 0 && (
+        <ul className="active-filters" aria-label="מסננים פעילים">
+          {q.q && <li><button type="button" className="chip" onClick={() => { setText(''); update({ q: null, page: null }); }}>„{q.q}” <span className="sr-only">הסרת החיפוש</span></button></li>}
+          {q.type && <li><button type="button" className="chip" onClick={() => update({ type: null, page: null })}>{TYPE_LABEL[q.type]} <span className="sr-only">הסרת סוג</span></button></li>}
+          {q.topic && <li><button type="button" className="chip" onClick={() => update({ topic: null, page: null })}>{topics.data?.find((t) => t.slug === q.topic)?.name ?? q.topic} <span className="sr-only">הסרת נושא</span></button></li>}
+          {q.series && <li><button type="button" className="chip" onClick={() => update({ series: null, page: null })}>{series.data?.find((s) => s.slug === q.series)?.title ?? q.series} <span className="sr-only">הסרת סדרה</span></button></li>}
+          {q.provider && <li><button type="button" className="chip" onClick={() => update({ provider: null, page: null })}>{providerLabel(q.provider)} <span className="sr-only">הסרת מקור</span></button></li>}
+          {q.length && <li><button type="button" className="chip" onClick={() => update({ length: null, page: null })}>{LENGTHS.find(([v]) => v === q.length)?.[1]} <span className="sr-only">הסרת אורך</span></button></li>}
+          {q.dated && <li><button type="button" className="chip" onClick={() => update({ dated: null, page: null })}>{DATED.find(([v]) => v === q.dated)?.[1]} <span className="sr-only">הסרת תאריך</span></button></li>}
+        </ul>
+      )}
 
       <div className="spread" style={{ marginBottom: 'var(--s-4)' }}>
         <p className="muted" role="status" aria-live="polite" style={{ margin: 0 }}>

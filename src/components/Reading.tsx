@@ -4,7 +4,7 @@ import { Icon } from './Icon.tsx';
 
 const SCALES = [1, 1.125, 1.28] as const;
 
-export function ReadingProgress({ target }: { target: RefObject<HTMLElement | null> }) {
+export function ReadingProgress({ target }: { target: RefObject<HTMLElement | null> | RefObject<HTMLDivElement | null> }) {
   const [pct, setPct] = useState(0);
   useEffect(() => {
     const measure = () => {
@@ -39,8 +39,8 @@ export function ReadingTools({ scale, onScale }: { scale: number; onScale: (n: n
           <button key={s} type="button" aria-pressed={scale === s} onClick={() => onScale(s)} style={{ padding: '0 14px', fontSize: `${s}rem` }}>א</button>
         ))}
       </div>
-      <button type="button" className="btn btn-secondary btn-sm" onClick={() => set('fontScale', prefs.fontScale === 1.25 ? 1 : Math.min(1.25, prefs.fontScale + 0.125))}>
-        גודל כללי
+      <button type="button" className="btn btn-secondary btn-sm" aria-pressed={prefs.fontScale > 1} onClick={() => set('fontScale', prefs.fontScale === 1.25 ? 1 : Math.min(1.25, prefs.fontScale + 0.125))}>
+        גודל האתר
       </button>
       <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>
         <Icon name="file" /> הדפסה

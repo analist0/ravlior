@@ -15,6 +15,7 @@ import './styles/experience.css';
 import './styles/admin.css';
 import './styles/sections.css';
 import './styles/qa.css';
+import './styles/study.css';
 import { App } from './app/App.tsx';
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

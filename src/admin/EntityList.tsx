@@ -83,6 +83,7 @@ export default function EntityList({ entity }: { entity: EntityName }) {
         <h1>{cfg.label}{view === 'trash' && ' — סל מחזור'}</h1>
         {canEdit(roles) && view === 'active' && <Button icon="plus" onClick={() => navigate(`/admin/${cfg.route}/new`)}>{entity === 'publicQuestions' ? 'תשובה חדשה' : `${cfg.singular} חדש`}</Button>}
       </div>
+      {cfg.guide && view === 'active' && <p className="soft">{cfg.guide}</p>}
       <form className="admin-toolbar" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: text, page: null }); }}>
         <div className="field">
           <label htmlFor="aq">חיפוש (ניהול)</label>

@@ -1,7 +1,8 @@
 import { useHead } from '../app/head.ts';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
-import { Badge, Breadcrumbs, CardSkeletons, EmptyState, ErrorState, Notice, splitTitle } from '../components/ui.tsx';
+import { PageIntro } from '../components/PageIntro.tsx';
+import { Badge, Breadcrumbs, CardSkeletons, EmptyState, ErrorState, splitTitle } from '../components/ui.tsx';
 import { bookOffers } from '../shared/sections.ts';
 import type { ContentItem } from '../shared/types.ts';
 
@@ -49,11 +50,12 @@ export default function BooksPage() {
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'ספרים ועלונים' }]} />
-      <h1>ספרים, עלונים ודברי תורה</h1>
-      <Notice>
-        לא אותרה רשימה מאומתת של ספרים שחיבר הרב. „ימי מלך — שיחות הרב” ידוע מדיווח בלבד, וקובץ מלא שלו לא אותר.
-        „ימי מלך” הקונטרס המשפחתי הוא פרסום אחר ואינו מחיבורי הרב. תוכן עניינים, קטע לקריאה וקישורי רכישה או תרומה מוצגים רק אם נשמרו בפריט.
-      </Notice>
+      <PageIntro mark eyebrow="עיון" title="ספרים, עלונים ודברי תורה" lede="מוצג רק מה שנשמר בפריט: כותרת, מקור, ותוכן עניינים או קטע לקריאה אם הוזנו.">
+        <details>
+          <summary>איך לקרוא את המדף</summary>
+          <p className="soft">לא אותרה רשימה מאומתת של ספרים שחיבר הרב. „ימי מלך — שיחות הרב” ידוע מדיווח בלבד, וקובץ מלא שלו לא אותר. „ימי מלך” הקונטרס המשפחתי הוא פרסום אחר ואינו מחיבורי הרב. קישורי רכישה או תרומה מופיעים רק אם נשמרו.</p>
+        </details>
+      </PageIntro>
       <Shelf title="ספרים וקונטרסים" id="h-books" items={books.data?.items} loading={books.loading} error={books.error} onRetry={books.reload} />
       <Shelf title="עלונים (PDF באתרי המקור)" id="h-leaflets" items={leaflets.data?.items} loading={leaflets.loading} error={leaflets.error} onRetry={leaflets.reload} />
       <Shelf title="דברי תורה כתובים" id="h-articles" items={articles.data?.items} loading={articles.loading} error={articles.error} onRetry={articles.reload} />

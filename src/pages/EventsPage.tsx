@@ -3,8 +3,9 @@ import { useHead } from '../app/head.ts';
 import { Link, useSearchParams } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { Icon } from '../components/Icon.tsx';
+import { PageIntro } from '../components/PageIntro.tsx';
 import { Badge, Breadcrumbs, Button, EmptyState, ErrorState, Notice, Skeleton, formatHebDate } from '../components/ui.tsx';
-import { eventIcs, eventIsoDate, eventJsonLd, externalHref, googleCalendarUrl, hebrewDateFromIso, monthGrid, partitionEvents, todayIso } from '../shared/sections.ts';
+import { eventIcs, eventIsoDate, eventJsonLd, externalHref, googleCalendarUrl, hebrewDateFromIso, linkHost, monthGrid, partitionEvents, todayIso } from '../shared/sections.ts';
 import type { EventRecord, Institution } from '../shared/types.ts';
 
 function downloadIcs(event: EventRecord) {
@@ -41,12 +42,12 @@ function EventCard({ event, institutions }: { event: EventRecord; institutions: 
       {iso && (
         <div className="row">
           <Button size="sm" variant="secondary" icon="download" onClick={() => downloadIcs(event)}>הוספה ליומן (ics)</Button>
-          {google && <a className="btn btn-secondary btn-sm" href={google} target="_blank" rel="noopener noreferrer"><Icon name="calendar" /> Google Calendar</a>}
+          {google && <a className="btn btn-secondary btn-sm" href={google} target="_blank" rel="noopener noreferrer"><Icon name="calendar" /> יומן Google</a>}
         </div>
       )}
       {event.sourceUrls.length > 0 && (
         <p className="soft" style={{ margin: 0 }}>
-          מקורות: {event.sourceUrls.map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer">{u.replace(/^https?:\/\/(www\.)?/, '').slice(0, 32)} </a>)}
+          מקורות: {event.sourceUrls.map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer">{linkHost(u)} </a>)}
         </p>
       )}
     </li>
@@ -93,8 +94,7 @@ export default function EventsPage() {
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'מוסדות', to: '/institutions' }, { label: 'אירועים' }]} />
-      <h1>אירועים</h1>
-      <p className="section-lead">ארכיון פעילות שתועדה במקורות. „קרוב” ו„עבר” נקבעים רק כשיש תאריך מפורש. בלי תאריך — הפריט נשאר ברשימה נפרדת, בלי ניחוש.</p>
+      <PageIntro mark eyebrow="מוסדות" title="אירועים" lede="ארכיון פעילות שתועדה במקורות. „קרוב” ו„עבר” נקבעים רק כשיש תאריך מפורש. בלי תאריך הפריט נשאר ברשימה נפרדת, בלי ניחוש." />
       <div className="row" style={{ margin: 'var(--s-4) 0' }}>
         <div className="segmented" role="group" aria-label="תצוגת אירועים">
           <button type="button" aria-pressed={view === 'upcoming'} onClick={() => update({ view: null })}>קרובים</button>
@@ -118,6 +118,7 @@ export default function EventsPage() {
             <div className="row">
               <Button size="sm" variant="secondary" onClick={() => shift(-1)}>חודש קודם</Button>
               <Button size="sm" variant="secondary" onClick={() => shift(1)}>חודש הבא</Button>
+              <Button size="sm" variant="ghost" onClick={() => { const [y, m] = today.split('-').map(Number); setCursor({ year: y!, month: m! }); }}>היום</Button>
             </div>
           </div>
           <div className="cal-grid" style={{ marginTop: 'var(--s-3)' }}>
@@ -128,7 +129,8 @@ export default function EventsPage() {
                 <div key={c.iso} className="cal-day" data-out={!c.inMonth} data-today={c.iso === today}>
                   <strong>{c.gregorian}</strong>
                   {c.hebrew && <small>{c.hebrew.dayLabel} {c.hebrew.monthName}</small>}
-                  {hits.map((e) => <a key={e.id} href={`#${e.slug}`} className="cal-dot" title={e.title}><span className="sr-only">{e.title}</span></a>)}
+                  {hits.slice(0, 2).map((e) => <a key={e.id} href={`#${e.slug}`} className="cal-event">{e.title}</a>)}
+                  {hits.length > 2 && <span className="cal-more">+{hits.length - 2}</span>}
                 </div>
               );
             })}

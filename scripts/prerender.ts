@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { lessonJsonLd, videoSitemapXml } from '../src/shared/lesson.ts';
 import type { ContentItem, EventRecord, Institution, Page, PublicQuestion, SeedData, Series, Topic } from '../src/shared/types.ts';
 import { DEFAULT_PAGES } from '../src/shared/defaults.ts';
-import { bookJsonLd, eventJsonLd, isListed } from '../src/shared/sections.ts';
+import { bookJsonLd, bookOffers, eventJsonLd, isListed } from '../src/shared/sections.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = resolve(root, 'dist');
@@ -123,6 +123,19 @@ outs.push({ path: '/responsa', title: 'שאלות ותשובות', description: 
 outs.push({ path: '/ask', title: 'שאלה לרב', description: 'שליחת שאלה לרב ליאור כהן — ללא הרשמה, אפשר בעילום שם. השאלה אינה מתפרסמת ללא הסכמה ואישור.', body: '<h1>שאלה לרב</h1><p>הטופס נטען עם האתר.</p>' });
 outs.push({ path: '/institutions', title: 'מוסדות ופעילות', description: 'מוסדות אור המאיר, ישיבת מאור יוסף, הישיבה הגדולה אורחות מאיר וקהילת היכל משה — ופעילות מתועדת עם קישורים למקורות.', body: `<h1>מוסדות ופעילות</h1><ul>${data.institutions.map((i) => `<li>${esc(i.name)}</li>`).join('')}</ul><p><a href="/events">אירועים</a></p>` });
 outs.push({ path: '/sources', title: 'מקורות', description: 'הארכיונים והאתרים שמהם נאסף המידע באתר.', body: '<h1>מקורות</h1>' });
+const gifts = data.content.flatMap((c) => {
+  if (!['book', 'leaflet'].includes(c.type)) return [];
+  const offers = bookOffers(c.bookDetails);
+  if (!offers.donation && !offers.purchase) return [];
+  const [name] = split(c.title);
+  return [`<li><a href="/books/${esc(c.slug)}">${esc(name!)}</a></li>`];
+});
+outs.push({
+  path: '/support',
+  title: 'תמיכה',
+  description: 'קישורי רכישה ותרומה מוצגים רק אם נשמרו בפריט. אין בעמוד זה פרטי חשבון או סכום.',
+  body: `<h1>תמיכה</h1><p>קישור מופיע רק כשנשמר על ספר או עלון.</p>${gifts.length ? `<ul>${gifts.join('')}</ul>` : '<p>עדיין אין קישור תרומה.</p>'}`,
+});
 for (const p of data.pages) {
   const text = p.blocks.map((b) => ('text' in b ? `<p>${esc(b.text)}</p>` : '')).join('');
   outs.push({ path: p.slug === 'about' ? '/about' : `/p/${p.slug}`, title: p.title, description: p.description ?? p.title, body: `<h1>${esc(p.title)}</h1>${text}` });

@@ -20,6 +20,10 @@ const template = readFileSync(resolve(dist, 'index.html'), 'utf8');
 if (!template.includes('<!--prerender-->') || !template.includes('<!--head-meta-->')) {
   throw new Error('dist/index.html is missing prerender markers. Run vite build before prerender.');
 }
+const cssHref = template.match(/<link rel="stylesheet"[^>]*href="([^"]+\.css)"/)?.[1];
+const inlinedCss = cssHref
+  ? readFileSync(resolve(dist, cssHref.replace(/^\//, '')), 'utf8').replace(/<\/style/gi, '<\\/style')
+  : '';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const split = (t: string) => { const i = t.indexOf(' / '); return i > 0 ? [t.slice(0, i).trim(), t.slice(i + 3).trim()] : [t.trim(), '']; };
@@ -54,9 +58,14 @@ function render(o: Out): string {
     o.preload ? `<link rel="preload" as="image" href="${esc(o.preload)}" fetchpriority="high" />` : '',
   ].filter(Boolean).join('\n    ');
   const nav = `<nav aria-label="ניווט"><a href="/">בית</a> · <a href="/watch">אודיטוריום</a> · <a href="/library">ספרייה</a> · <a href="/series">סדרות</a> · <a href="/topics">נושאים</a> · <a href="/books">ספרים</a> · <a href="/responsa">שו״ת</a> · <a href="/ask">שאלה לרב</a></nav>`;
-  return template
+  let html = template
     .replace(/<!--head-meta-->[\s\S]*?<!--\/head-meta-->/, head)
-    .replace('<!--prerender-->', `<div class="container prerendered">${nav}<main>${o.body}</main></div>`);
+    .replace('<!--prerender-->', `<div class="container prerendered">${nav}<main>${o.body}</main></div>`)
+    .replace(/<link rel="stylesheet"[^>]*>/, inlinedCss ? `<style>${inlinedCss}</style>` : '$&');
+  if (o.preload) {
+    html = html.replace('<div id="root">', `<img id="hall-lcp" alt="" width="1280" height="720" fetchpriority="high" decoding="async" src="${esc(o.preload)}" /><div id="root">`);
+  }
+  return html;
 }
 function write(route: string, html: string) {
   // /item/x → dist/item/x.html (served with cleanUrls on Vercel); / → dist/index.html
@@ -101,7 +110,9 @@ for (const p of data.pages) {
 for (const c of data.content) {
   const [main, sub] = split(c.title);
   const yt = c.sources.find((s) => s.provider === 'youtube' && s.providerId);
-  const srcs = c.sources.map((s) => `<li><a href="${esc(s.url)}" rel="noopener">${esc(s.provider)}</a></li>`).join('');
+  const srcs = c.sources.map((s) => s.provider === 'youtube'
+    ? `<li>מוטמע בנגן האתר${s.providerId ? ` · ${esc(s.providerId)}` : ''}</li>`
+    : `<li><a href="${esc(s.url)}" rel="noopener">${esc(s.provider)}</a></li>`).join('');
   outs.push({
     path: `/item/${c.slug}`, title: main!, type: c.type === 'video' || c.type === 'short' ? 'video.other' : 'article',
     description: (c.summary ?? (sub || `${TYPE[c.type]} — ${main}`)).slice(0, 180),

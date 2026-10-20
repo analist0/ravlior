@@ -7,18 +7,24 @@ interface Ctx {
   favorites: string[];
   toggleFavorite: (id: string) => boolean;
   isFavorite: (id: string) => boolean;
+  watchLater: string[];
+  toggleWatchLater: (id: string) => boolean;
+  isWatchLater: (id: string) => boolean;
   progress: Record<string, ProgressEntry>;
   saveProgress: (id: string, e: ProgressEntry) => void;
   clearProgress: (id: string) => void;
 }
 const LibCtx = createContext<Ctx | null>(null);
 const FAV = 'favorites.v1';
+const LATER = 'watch-later.v1';
 const PROG = 'progress.v1';
 
 export function LibraryStateProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<string[]>(() => readJSON<string[]>(FAV, []));
+  const [watchLater, setWatchLater] = useState<string[]>(() => readJSON<string[]>(LATER, []));
   const [progress, setProgress] = useState<Record<string, ProgressEntry>>(() => readJSON(PROG, {}));
   useEffect(() => writeJSON(FAV, favorites), [favorites]);
+  useEffect(() => writeJSON(LATER, watchLater), [watchLater]);
   useEffect(() => writeJSON(PROG, progress), [progress]);
 
   const toggleFavorite = useCallback((id: string) => {
@@ -26,6 +32,11 @@ export function LibraryStateProvider({ children }: { children: ReactNode }) {
     setFavorites((f) => (f.includes(id) ? f.filter((x) => x !== id) : [id, ...f].slice(0, 500)));
     return added;
   }, [favorites]);
+  const toggleWatchLater = useCallback((id: string) => {
+    const added = !watchLater.includes(id);
+    setWatchLater((f) => (f.includes(id) ? f.filter((x) => x !== id) : [id, ...f].slice(0, 500)));
+    return added;
+  }, [watchLater]);
   const saveProgress = useCallback((id: string, e: ProgressEntry) => {
     setProgress((p) => {
       const next = { ...p, [id]: e };
@@ -39,8 +50,12 @@ export function LibraryStateProvider({ children }: { children: ReactNode }) {
   }, []);
   const clearProgress = useCallback((id: string) => setProgress(({ [id]: _, ...rest }) => rest), []);
   const value = useMemo(
-    () => ({ favorites, toggleFavorite, isFavorite: (id: string) => favorites.includes(id), progress, saveProgress, clearProgress }),
-    [favorites, toggleFavorite, progress, saveProgress, clearProgress],
+    () => ({
+      favorites, toggleFavorite, isFavorite: (id: string) => favorites.includes(id),
+      watchLater, toggleWatchLater, isWatchLater: (id: string) => watchLater.includes(id),
+      progress, saveProgress, clearProgress,
+    }),
+    [favorites, toggleFavorite, watchLater, toggleWatchLater, progress, saveProgress, clearProgress],
   );
   return <LibCtx.Provider value={value}>{children}</LibCtx.Provider>;
 }

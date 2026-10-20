@@ -143,6 +143,7 @@ export async function createApiRepository(): Promise<Repository> {
     commitImport: (rows) => rpc('admin.commitImport', { rows }),
     exportAll: () => rpc('admin.export'),
     probeUrl: (url) => call('/api/import/probe', { method: 'POST', body: JSON.stringify({ url }) }),
+    youtubeMeta: (url) => call('/api/import/youtube', { method: 'POST', body: JSON.stringify({ url }) }),
   };
   repo.admin = admin;
   return repo;

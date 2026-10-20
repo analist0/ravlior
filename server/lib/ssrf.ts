@@ -91,6 +91,62 @@ function once(url: URL, opts: Required<Pick<GuardOptions, 'timeoutMs' | 'maxByte
   });
 }
 
+/** GET a small text body (oEmbed JSON, embed HTML). Stops at maxBytes and returns the partial text. */
+export async function guardedFetchText(raw: string, o: GuardOptions = {}): Promise<string> {
+  const timeoutMs = o.timeoutMs ?? 8000;
+  const maxBytes = o.maxBytes ?? 400_000;
+  let url = checkUrl(raw, o.allowHosts);
+  for (let hop = 0; hop <= (o.maxRedirects ?? 3); hop++) {
+    const res = await readText(url, timeoutMs, maxBytes);
+    if (res.status >= 300 && res.status < 400 && res.location) {
+      url = checkUrl(new URL(res.location, url).toString(), o.allowHosts);
+      continue;
+    }
+    if (res.status < 200 || res.status >= 300) throw new SsrfError('המקור לא החזיר תוכן');
+    return res.text;
+  }
+  throw new SsrfError('יותר מדי הפניות');
+}
+
+function readText(url: URL, timeoutMs: number, maxBytes: number): Promise<{ status: number; location: string | null; text: string }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const ok = (value: { status: number; location: string | null; text: string }) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const bad = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+    const req = request(url, {
+      method: 'GET', lookup: guardedLookup, timeout: timeoutMs,
+      headers: { 'user-agent': 'or-hameir-probe/1.0', accept: 'application/json,text/html;q=0.9,*/*;q=0.1' },
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size <= maxBytes) chunks.push(chunk);
+        if (size >= maxBytes) res.destroy();
+      });
+      const finish = () => ok({
+        status: res.statusCode ?? 0,
+        location: typeof res.headers.location === 'string' ? res.headers.location : null,
+        text: Buffer.concat(chunks).toString('utf8'),
+      });
+      res.on('end', finish);
+      res.on('close', finish);
+      res.on('error', finish);
+    });
+    req.on('timeout', () => req.destroy(new SsrfError('תם הזמן')));
+    req.on('error', bad);
+    req.end();
+  });
+}
+
 export async function guardedProbe(raw: string, o: GuardOptions = {}): Promise<ProbeResult> {
   const opts = { timeoutMs: o.timeoutMs ?? 8000, maxBytes: o.maxBytes ?? 64 * 1024, method: o.method ?? 'HEAD' } as const;
   let url = checkUrl(raw, o.allowHosts);

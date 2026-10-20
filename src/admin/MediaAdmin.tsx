@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from '../app/router.tsx';
 import { errorMessage, useAsync, useRepo, type UploadResult } from '../data/repo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { useConfirm } from '../components/Dialog.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Button, EmptyState, ErrorState, Notice, Pagination, SelectField, Skeleton, TextField } from '../components/ui.tsx';
-import { youtubeId } from '../shared/media.ts';
+import { embedUrl, formatDuration, isYoutubeShortUrl, youtubeId, youtubeThumb } from '../shared/media.ts';
 import { BUCKETS, checkUpload, signedUrlValid, type BucketId } from '../shared/upload-policy.ts';
 import type { ContentItem, ContentType } from '../shared/types.ts';
 import type { ImportPreview } from '../data/repo.ts';
@@ -82,6 +82,7 @@ export default function MediaScreen() {
   const [ytTitle, setYtTitle] = useState('');
   const [ytType, setYtType] = useState<ContentType>('video');
   const [ytDuration, setYtDuration] = useState('');
+  const [ytAuthor, setYtAuthor] = useState('');
   const [ytBusy, setYtBusy] = useState(false);
   const [ytPreview, setYtPreview] = useState<ImportPreview[] | null>(null);
   const [lessonType, setLessonType] = useState('video');
@@ -145,24 +146,46 @@ export default function MediaScreen() {
       {canEdit(roles) && (
         <section className="panel" style={{ marginTop: 'var(--s-4)' }} aria-labelledby="h-yt">
           <h2 id="h-yt"><Icon name="watch" /> שיעור חדש מקישור YouTube</h2>
-          <p className="soft">אותו ייבוא שכבר קיים: טיוטה עם הטמעה רשמית, בלי להוריד את הסרטון. הכותרת נלקחת ממה שתדביקו — האתר לא ממציא אותה.</p>
+          <p className="soft">הדביקו קישור. הכותרת, שם הערוץ והמשך נמשכים מ-YouTube — האתר לא ממציא אותם. אם המשיכה נכשלת, הדביקו את הכותרת כפי שהיא במקור. אחרי הטיוטה, שייכו את השיעור לסדרה במסך הסדרות.</p>
           <div className="form-grid two">
             <TextField label="קישור YouTube" dir="ltr" value={ytUrl} onChange={(e) => { setYtUrl(e.target.value); setYtPreview(null); }} placeholder="https://www.youtube.com/watch?v=…" />
-            <TextField label="כותרת כפי שבמקור" value={ytTitle} onChange={(e) => { setYtTitle(e.target.value); setYtPreview(null); }} />
+            <div className="row" style={{ alignItems: 'end' }}>
+              <Button variant="secondary" busy={ytBusy} onClick={() => void (async () => {
+                setYtBusy(true);
+                try {
+                  const meta = await repo.admin.youtubeMeta(ytUrl.trim());
+                  setYtTitle(meta.title);
+                  setYtPreview(null);
+                  if (meta.author) setYtAuthor(meta.author);
+                  if (meta.durationText) setYtDuration(meta.durationText);
+                  if (isYoutubeShortUrl(ytUrl)) setYtType('short');
+                  toast(meta.durationText ? 'הכותרת והמשך נמשכו מהמקור' : 'הכותרת נמשכה. המשך לא הוחזר — אפשר לקרוא אותו מהנגן.');
+                } catch (e) { toast(errorMessage(e), { tone: 'error' }); }
+                finally { setYtBusy(false); }
+              })()}>משיכת פרטים</Button>
+            </div>
+            <TextField label="כותרת כפי שבמקור" value={ytTitle} onChange={(e) => { setYtTitle(e.target.value); setYtPreview(null); }} hint="מתמלאת ממשיכה. אפשר לתקן אם המקור שונה." />
+            <TextField label="שם הערוץ (אם נמשך)" value={ytAuthor} onChange={(e) => setYtAuthor(e.target.value)} />
             <SelectField label="סוג" value={ytType} onChange={(e) => setYtType(e.target.value as ContentType)}>
               <option value="video">וידאו</option>
               <option value="short">קצר</option>
               <option value="live">שידור מוקלט</option>
               <option value="audio">אודיו</option>
             </SelectField>
-            <TextField label="משך (לא חובה)" dir="ltr" value={ytDuration} onChange={(e) => setYtDuration(e.target.value)} placeholder="24:26" hint="רק אם הוא מופיע במקור" />
+            <TextField label="משך" dir="ltr" value={ytDuration} onChange={(e) => setYtDuration(e.target.value)} placeholder="24:26" hint="רק אם נמשך או מופיע במקור. השאירו ריק אם אין." />
           </div>
+          {youtubeId(ytUrl) && (
+            <div className="yt-draft" style={{ marginTop: 'var(--s-3)' }}>
+              <img src={youtubeThumb(youtubeId(ytUrl)!, 'hq')} alt="" width={320} height={180} />
+              <DurationReader videoId={youtubeId(ytUrl)!} known={ytDuration} onDuration={(sec) => setYtDuration(formatDuration(sec))} />
+            </div>
+          )}
           <div className="row" style={{ marginTop: 'var(--s-3)' }}>
             <Button variant="secondary" busy={ytBusy} onClick={() => void (async () => {
               setYtBusy(true);
               try {
                 if (!youtubeId(ytUrl)) { toast('זה לא קישור YouTube תקין', { tone: 'error' }); return; }
-                const preview = await repo.admin.previewImport([{ title: ytTitle.trim(), type: ytType, url: ytUrl.trim(), durationText: ytDuration.trim() || undefined }]);
+                const preview = await repo.admin.previewImport([{ title: ytTitle.trim(), type: ytType, url: ytUrl.trim(), durationText: ytDuration.trim() || undefined, speaker: ytAuthor.trim() || undefined }]);
                 setYtPreview(preview);
               } catch (e) { toast(errorMessage(e), { tone: 'error' }); }
               finally { setYtBusy(false); }
@@ -173,7 +196,7 @@ export default function MediaScreen() {
               try {
                 const res = await repo.admin.commitImport(ytPreview.filter((p) => p.action === 'create').map((p) => p.row));
                 toast(`נוצרו ${res.created} טיוטות, דולגו ${res.skipped}`);
-                setYtPreview(null); setYtUrl(''); setYtTitle(''); setYtDuration('');
+                setYtPreview(null); setYtUrl(''); setYtTitle(''); setYtDuration(''); setYtAuthor('');
                 lessons.reload();
               } catch (e) { toast(errorMessage(e), { tone: 'error' }); }
               finally { setYtBusy(false); }
@@ -288,6 +311,52 @@ export default function MediaScreen() {
           return `/admin/media?${n}`;
         }} />}
       </section>
+    </div>
+  );
+}
+
+/** Reads duration from the official nocookie player. Does not download the file. */
+function DurationReader({ videoId, known, onDuration }: { videoId: string; known: string; onDuration: (sec: number) => void }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== 'https://www.youtube-nocookie.com') return;
+      let data: unknown = e.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch { return; }
+      }
+      if (!data || typeof data !== 'object' || !('info' in data)) return;
+      const info = (data as { info?: unknown }).info;
+      if (!info || typeof info !== 'object' || !('duration' in info)) return;
+      const duration = (info as { duration?: unknown }).duration;
+      if (typeof duration === 'number' && duration > 1) onDuration(Math.round(duration));
+    };
+    addEventListener('message', onMsg);
+    return () => removeEventListener('message', onMsg);
+  }, [open, onDuration]);
+  const src = embedUrl('youtube', videoId, { jsapi: true, origin: location.origin });
+  if (known.trim()) return <p className="soft">משך: <span className="ltr">{known}</span></p>;
+  return (
+    <div className="stack">
+      {!open && <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>קריאת משך מהנגן</Button>}
+      {open && src && (
+        <div className="media-frame" style={{ maxWidth: 420 }}>
+          <iframe
+            id={`dur-${videoId}`}
+            ref={frame}
+            src={src}
+            title="קריאת משך השיעור"
+            allow="autoplay; encrypted-media"
+            onLoad={() => {
+              const el = frame.current;
+              el?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: el.id, channel: 'widget' }), 'https://www.youtube-nocookie.com');
+            }}
+          />
+        </div>
+      )}
+      <p className="soft">הנגן הרשמי יכול להחזיר את המשך אחרי טעינה. אין הורדה של הסרטון. אם לא הופיע מספר, השאירו את השדה ריק.</p>
     </div>
   );
 }

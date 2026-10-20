@@ -113,6 +113,8 @@ export interface AdminRepo {
   exportAll(): Promise<Record<string, unknown>>;
   /** Server-side, SSRF-guarded metadata probe of a direct media URL (staff only). */
   probeUrl(url: string): Promise<Record<string, unknown>>;
+  /** Title, channel and duration for a YouTube URL. Title is never invented. */
+  youtubeMeta(url: string): Promise<import('../shared/youtube-meta.ts').YoutubeMeta>;
 }
 
 export interface Repository {

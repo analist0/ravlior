@@ -5,11 +5,14 @@ import { useLibraryState } from '../app/library-state.tsx';
 import { Link, useSearchParams } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { BlockRenderer } from '../components/Blocks.tsx';
+import { FilmCard } from '../components/FilmCard.tsx';
 import { CardGrid, MediaPlayer, pickSource, playableTrack, providerLabel, thumbFor } from '../components/Media.tsx';
+import { SnapRail } from '../components/SnapRail.tsx';
 import { usePlayer } from '../player/PlayerProvider.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, TYPE_LABEL, formatHebDate, splitTitle } from '../components/ui.tsx';
 import { NotFound } from './NotFound.tsx';
+import { whyRelated } from '../shared/hall.ts';
 import { lessonJsonLd, parseTimestamp } from '../shared/lesson.ts';
 import type { AttributionStatus, ContentItem, MediaSource, Series } from '../shared/types.ts';
 
@@ -35,9 +38,15 @@ function SourceList({ sources }: { sources: MediaSource[] }) {
             <Badge>{KIND[s.kind]}</Badge><Badge tone="accent">{providerLabel(s.provider)}</Badge>
             {s.storagePath ? <Badge tone="ok">נשמר אצלנו</Badge> : <Badge>מקושר</Badge>}
           </div>
-          <a href={s.url} target="_blank" rel="noopener noreferrer" className="ltr" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
-            {decodeURI(s.url).replace(/^https:\/\/(www\.)?/, '').slice(0, 80)}
-          </a>
+          {s.provider === 'youtube' ? (
+            <span className="soft ltr" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
+              מוטמע בנגן האתר{s.providerId ? ` · ${s.providerId}` : ''}
+            </span>
+          ) : (
+            <a href={s.url} target="_blank" rel="noopener noreferrer" className="ltr" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
+              {decodeURI(s.url).replace(/^https:\/\/(www\.)?/, '').slice(0, 80)}
+            </a>
+          )}
           <span className="soft">{RIGHTS[s.rightsStatus]}{s.lastCheckedAt ? ` · נבדק ${formatHebDate(s.lastCheckedAt)}` : ' · זמינות לא נבדקה'}</span>
         </li>
       ))}
@@ -61,7 +70,7 @@ function Share({ item }: { item: ContentItem }) {
 
 export default function ItemPage({ params }: { params: Record<string, string> }) {
   const repo = useRepo();
-  const { isFavorite, toggleFavorite } = useLibraryState();
+  const { isFavorite, toggleFavorite, isWatchLater, toggleWatchLater } = useLibraryState();
   const player = usePlayer();
   const toast = useToast();
   const [search] = useSearchParams();
@@ -115,6 +124,8 @@ export default function ItemPage({ params }: { params: Record<string, string> })
   const dupes = (related.data ?? []).filter((c) => item.duplicateGroup && c.duplicateGroup === item.duplicateGroup);
   const others = (related.data ?? []).filter((c) => !dupes.includes(c));
   const fav = isFavorite(item.id);
+  const later = isWatchLater(item.id);
+  const watchable = item.type === 'video' || item.type === 'short' || item.type === 'live' || item.type === 'audio';
 
   return (
     <article className="container">
@@ -141,6 +152,11 @@ export default function ItemPage({ params }: { params: Record<string, string> })
             <Button variant={fav ? 'primary' : 'secondary'} icon="bookmark" aria-pressed={fav} onClick={() => { const a = toggleFavorite(item.id); toast(a ? 'נשמר במועדפים' : 'הוסר מהמועדפים'); }}>
               {fav ? 'שמור' : 'שמירה'}
             </Button>
+            {watchable && (
+              <Button variant={later ? 'primary' : 'secondary'} icon="clock" aria-pressed={later} onClick={() => toast(toggleWatchLater(item.id) ? 'נשמר לצפייה מאוחר יותר' : 'הוסר מרשימת הצפייה')}>
+                {later ? 'ברשימת הצפייה' : 'צפייה מאוחר יותר'}
+              </Button>
+            )}
             <Share item={item} />
             {track && <Button variant="secondary" icon="queue" onClick={() => { player.enqueue(track); toast('נוסף לתור'); }}>הוספה לתור</Button>}
           </div>
@@ -198,10 +214,12 @@ export default function ItemPage({ params }: { params: Record<string, string> })
       </div>
       {others.length > 0 && (
         <section className="section" aria-labelledby="h-related">
-          <h2 id="h-related">חומרים קשורים</h2>
-          <CardGrid items={others.slice(0, 8)} />
+          <div className="section-head"><h2 id="h-related">עוד באותו נושא או באותה סדרה</h2></div>
+          <SnapRail label="עוד באותו נושא או באותה סדרה">
+            {others.map((c) => <li key={c.id}><FilmCard item={c} note={whyRelated(item, c) || undefined} /></li>)}
+          </SnapRail>
         </section>
       )}
-    </article>
+      </article>
   );
 }

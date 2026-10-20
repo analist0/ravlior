@@ -50,7 +50,8 @@ insert into public.user_roles (user_id, role) values
   ('00000000-0000-4000-a000-000000000005', 'rabbi'),
   ('00000000-0000-4000-a000-000000000006', 'viewer');
 insert into public.content_items (id, slug, type, title, status) values
-  ('10000000-0000-4000-a000-000000000001', 'test-draft', 'video', 'טיוטת בדיקה', 'draft');
+  ('10000000-0000-4000-a000-000000000001', 'test-draft', 'video', 'טיוטת בדיקה', 'draft'),
+  ('10000000-0000-4000-a000-000000000010', 'test-pub-search', 'article', 'הלכות סוכה וארבעת המינים', 'published');
 insert into public.media_sources (content_id, provider, provider_id, url, canonical_url, kind)
   values ('10000000-0000-4000-a000-000000000001', 'web', null, 'https://example.org/draft', 'https://example.org/draft', 'source_page');
 insert into public.question_submissions (id, tracking_code, token_hash, question_text, publish_consent)
@@ -69,6 +70,13 @@ select pg_temp.ok((select count(*) from public.audit_log) = 0, 'anon cannot read
 select pg_temp.ok((select count(*) from public.revisions) = 0, 'anon cannot read revisions');
 select pg_temp.ok(not exists (select 1 from public.search_content('בדיקה') s join public.content_items c on c.id = s.id where c.status <> 'published'),
   'public search returns published only');
+select pg_temp.ok(exists (select 1 from public.search_site('סוקה') s where s.href = '/item/test-pub-search'),
+  'site search matches a one-letter typo via trigram');
+select pg_temp.ok(not exists (select 1 from public.search_site('טיוטת בדיקה') s where s.href like '%test-draft%'),
+  'site search hides drafts');
+select pg_temp.ok(pg_temp.raises('select * from public.update_signups'), 'anon cannot read update signups');
+select pg_temp.ok(pg_temp.raises($$insert into public.update_signups (channel, contact, consent) values ('email', 'anon@example.com', true)$$),
+  'anon cannot insert update signups');
 select pg_temp.ok((select count(*) from public.track_question('TEST-0001', 'wrong-token-wrong-token-wrong-token-00')) = 0, 'tracking with a wrong token returns nothing');
 select pg_temp.ok((select status from public.track_question('TEST-0001', 'x'||repeat('s', 40))) = 'submitted', 'tracking with code + token returns status');
 select pg_temp.ok((select answer_text from public.track_question('TEST-0001', 'x'||repeat('s', 40))) is null, 'tracking hides unanswered text');

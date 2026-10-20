@@ -73,5 +73,19 @@ export function dbClient(env: ServerEnv): DataClient {
       const exp = rows[0]?.expires_at;
       return { token, expiresAt: exp instanceof Date ? exp.toISOString() : String(exp ?? '') };
     },
+    async insertSignup(row) {
+      try {
+        await asOwner(async (sql) => {
+          await sql(
+            `insert into public.update_signups (channel, contact, consent) values ($1, $2, true)`,
+            [row.channel, row.contact],
+          );
+        });
+        return 'created';
+      } catch (e) {
+        if (e instanceof ApiError && e.code === '23505') return 'exists';
+        throw e;
+      }
+    },
   };
 }

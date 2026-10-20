@@ -15,7 +15,7 @@ export default function ContentPage({ params }: { params: Record<string, string>
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: r.data.title }]} />
       <h1>{r.data.title}</h1>
-      <BlockRenderer blocks={r.data.blocks} />
+      <div className="torah-sheet"><BlockRenderer blocks={r.data.blocks} reading /></div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { sanitizeBlocks } from '../shared/blocks.ts';
+import { extractFootnotes, footnoteRuns } from '../shared/footnotes.ts';
 import type { Block } from '../shared/types.ts';
 import { Icon } from './Icon.tsx';
 import { CardGrid, MediaPlayer } from './Media.tsx';
@@ -26,14 +27,41 @@ function RelatedBlock({ ids }: { ids: string[] }) {
   return r.data?.length ? <CardGrid items={r.data} /> : null;
 }
 
-export function BlockRenderer({ blocks }: { blocks: Block[] }) {
-  const { blocks: safe } = sanitizeBlocks(blocks);
+function Paragraph({ text, defined, placed }: { text: string; defined: Set<number>; placed: Set<number> }) {
+  const trimmed = text.trim();
+  if (defined.size) {
+    const only = /^\[\^(\d{1,3})\]:?\s+\S[\s\S]*$/.exec(trimmed);
+    if (only && defined.has(Number(only[1])) && trimmed === only[0]) return null;
+  }
+  const runs = footnoteRuns(text, defined);
   return (
-    <div className="prose">
+    <p>
+      {runs.map((r, i) => {
+        if (r.kind === 'text') return <span key={i}>{r.text}</span>;
+        const first = !placed.has(r.n);
+        if (first) placed.add(r.n);
+        return (
+          <sup key={i} id={first ? `fnref-${r.n}` : undefined} className="fn-ref">
+            <a href={`#fn-${r.n}`} aria-label={`הערה ${r.n}`}>{r.n}</a>
+          </sup>
+        );
+      })}
+    </p>
+  );
+}
+
+export function BlockRenderer({ blocks, reading = false }: { blocks: Block[]; reading?: boolean }) {
+  const { blocks: safe } = sanitizeBlocks(blocks);
+  const chunks = safe.flatMap((b) => (b.type === 'paragraph' ? b.text.split(/\n{2,}/) : []));
+  const notes = reading ? extractFootnotes(chunks).notes : [];
+  const defined = new Set(notes.map((n) => n.n));
+  const placed = new Set<number>();
+  return (
+    <div className={reading ? 'prose torah-prose' : 'prose'}>
       {safe.map((b, i) => {
         switch (b.type) {
           case 'heading': return b.level === 2 ? <h2 key={i}>{b.text}</h2> : <h3 key={i}>{b.text}</h3>;
-          case 'paragraph': return b.text.split(/\n{2,}/).map((p, j) => <p key={`${i}-${j}`}>{p}</p>);
+          case 'paragraph': return b.text.split(/\n{2,}/).map((p, j) => <Paragraph key={`${i}-${j}`} text={p} defined={defined} placed={placed} />);
           case 'image': return (
             <figure key={i} style={{ margin: 'var(--s-6) 0' }}>
               <img src={b.src} alt={b.alt} loading="lazy" decoding="async" style={{ borderRadius: 'var(--r-3)' }} />
@@ -58,6 +86,19 @@ export function BlockRenderer({ blocks }: { blocks: Block[] }) {
           );
         }
       })}
+      {notes.length > 0 && (
+        <section className="footnotes" aria-label="הערות שוליים">
+          <h2>הערות</h2>
+          <ol>
+            {notes.map((n) => (
+              <li key={n.n} id={`fn-${n.n}`} value={n.n}>
+                {n.text}
+                <a className="fn-back" href={`#fnref-${n.n}`} aria-label={`חזרה להפניה ${n.n}`}>↩</a>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </div>
   );
 }

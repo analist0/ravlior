@@ -1,5 +1,7 @@
 // Browser repository. Talks only to /api — the database password never reaches this file.
 import { API_BASE, SITE_URL } from '../app/config.ts';
+import { mergeNav, type SiteHit } from '../shared/site-search.ts';
+import type { UpdateInput } from '../shared/updates.ts';
 import { BUCKETS, checkUpload, storagePath, type BucketId } from '../shared/upload-policy.ts';
 import { PermissionError, VersionConflictError } from '../shared/workflow.ts';
 import type { ContentItem, ContentQuery, Role } from '../shared/types.ts';
@@ -33,6 +35,8 @@ export async function createApiRepository(): Promise<Repository> {
   const repo: Repository = {
     mode: 'api',
     listContent: (q: ContentQuery) => rpc('content.list', { q }),
+    searchSite: async (q) => mergeNav(await rpc<SiteHit[]>('site.search', { q }), q),
+    subscribeUpdates: (input: UpdateInput) => call<{ ok: true }>('/api/updates', { method: 'POST', body: JSON.stringify(input) }),
     getContent: (slug) => rpc('content.get', { slug }),
     getContentByIds: (ids) => rpc('content.byIds', { ids }),
     related: (item, limit) => rpc('content.related', { item, limit }),

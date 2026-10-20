@@ -16,4 +16,6 @@ export interface DataClient {
   listUsers: () => Promise<{ id: string; email: string | null; display_name: string | null }[]>;
   allRoles: () => Promise<{ user_id: string; role: string }[]>;
   invite: (email: string, invitedBy: string) => Promise<{ token: string; expiresAt: string }>;
+  /** Owner insert into update_signups. `exists` when the same channel+contact is already stored. */
+  insertSignup: (row: { channel: 'email' | 'whatsapp'; contact: string }) => Promise<'created' | 'exists'>;
 }

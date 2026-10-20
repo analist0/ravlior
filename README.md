@@ -65,7 +65,8 @@ The target database is the empty Neon project `ravlior` (id `frosty-mode-5859084
 4. `neon/migrations/004_search.sql`
 5. `neon/migrations/005_public_answer.sql`
 6. `neon/migrations/006_grants.sql`
-7. `neon/seed.sql`
+7. `neon/migrations/009_site_updates.sql` (site search + update signups; 007/008 may belong to other work)
+8. `neon/seed.sql`
 
 Then, optionally, `neon/verify/row_counts.sql` and `neon/verify/rls_checks.sql`. The checks run in a transaction and roll back. Every line should print `PASS`.
 

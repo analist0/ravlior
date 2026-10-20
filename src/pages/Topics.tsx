@@ -14,7 +14,11 @@ export function TopicsList() {
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'נושאים' }]} />
-      <h1>נושאים</h1>
+      <header className="topic-hero">
+        <p className="eyebrow">עיון</p>
+        <h1>נושאים</h1>
+        <p className="muted">שיעורים ותכנים לפי נושא. חלק מהשיוכים הוצעו אוטומטית מהכותרת וניתנים לתיקון בניהול.</p>
+      </header>
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <CardSkeletons n={6} />}
       <div className="grid-cards">
@@ -25,7 +29,7 @@ export function TopicsList() {
           </Link>
         ))}
       </div>
-      {r.data?.some((t) => t.auto) && <p className="soft" style={{ marginTop: 'var(--s-5)' }}>חלק מהשיוכים לנושאים הוצעו אוטומטית לפי מילים בכותרת, וניתנים לתיקון בניהול.</p>}
+      {r.data?.some((t) => t.auto) && <p className="soft" style={{ marginTop: 'var(--s-5)' }}>השיוך המסומן כאוטומטי נקבע לפי מילים בכותרת.</p>}
     </div>
   );
 }
@@ -44,14 +48,18 @@ export function TopicPage({ params }: { params: Record<string, string> }) {
   return (
     <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'נושאים', to: '/topics' }, { label: topic.name }]} />
-      <h1>{topic.name}</h1>
+      <header className="topic-hero">
+        <p className="eyebrow">נושא</p>
+        <h1>{topic.name}</h1>
+        {topic.description && <p className="muted">{topic.description}</p>}
+        {r.data && <p className="topic-count soft">{r.data.total} פריטים</p>}
+      </header>
       {topic.auto && <Notice>השיוך לנושא זה הוצע אוטומטית לפי מילים בכותרת.</Notice>}
       <div style={{ height: 'var(--s-4)' }} />
       {r.error && <ErrorState error={r.error} onRetry={r.reload} />}
       {r.loading && <CardSkeletons />}
       {r.data && (r.data.items.length ? (
         <>
-          <p className="soft">{r.data.total} פריטים</p>
           <CardGrid items={r.data.items} view={prefs.view} />
           <Pagination page={page} total={r.data.total} pageSize={24} hrefFor={(p) => `/topics/${params.slug}?page=${p}`} />
         </>

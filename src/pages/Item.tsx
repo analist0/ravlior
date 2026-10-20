@@ -1,8 +1,11 @@
+import { useRef, useState } from 'react';
+import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
 import { useLibraryState } from '../app/library-state.tsx';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { BlockRenderer } from '../components/Blocks.tsx';
+import { ReadingProgress, ReadingTools } from '../components/Reading.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { CardGrid, MediaPlayer, pickSource, playableTrack, providerLabel, thumbFor } from '../components/Media.tsx';
 import { usePlayer } from '../player/PlayerProvider.tsx';
@@ -23,6 +26,7 @@ const RIGHTS: Record<MediaSource['rightsStatus'], string> = {
   unverified: 'זכויות שימוש טרם אומתו — קישור למקור בלבד', embed_only: 'הטמעה בנגן הרשמי בלבד', licensed: 'בהרשאה', owned: 'בבעלות המוסדות', blocked: 'חסום',
 };
 const KIND: Record<MediaSource['kind'], string> = { media: 'מדיה', source_page: 'דף מקור', pdf: 'PDF', archive: 'ארכיון' };
+const TEXT_TYPES = new Set(['article', 'book', 'leaflet']);
 
 function SourceList({ sources }: { sources: MediaSource[] }) {
   return (
@@ -62,12 +66,15 @@ export default function ItemPage({ params }: { params: Record<string, string> })
   const { isFavorite, toggleFavorite } = useLibraryState();
   const player = usePlayer();
   const toast = useToast();
+  const articleRef = useRef<HTMLElement>(null);
+  const [readingScale, setReadingScale] = useState(1);
   const r = useAsync(() => repo.getContent(params.slug ?? ''), [params.slug]);
   const item = r.data;
   const topics = useAsync(() => repo.listTopics(), [repo]);
   const series = useAsync(() => repo.listSeries(), [repo]);
   const related = useAsync(() => (item ? repo.related(item, 8) : Promise.resolve([])), [item?.id]);
   const [main, sub] = item ? splitTitle(item.title) : ['', null];
+  const origin = SITE_URL || location.origin;
   useHead({
     title: main,
     description: item ? (item.summary ?? sub ?? `${TYPE_LABEL[item.type]} — ${main}`).slice(0, 180) : null,
@@ -75,6 +82,15 @@ export default function ItemPage({ params }: { params: Record<string, string> })
     image: item ? thumbFor(item) : null,
     type: item?.type === 'video' || item?.type === 'short' ? 'video.other' : 'article',
     noindex: item ? item.status !== 'published' : false,
+    jsonLd: item && TEXT_TYPES.has(item.type) ? {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: main,
+      inLanguage: 'he',
+      description: (item.summary ?? sub ?? main).slice(0, 180),
+      ...(item.speaker ? { author: { '@type': 'Person', name: item.speaker } } : {}),
+      mainEntityOfPage: `${origin}/item/${item.slug}`,
+    } : undefined,
   });
 
   if (r.loading) return <div className="container section"><Skeleton h={320} /><div style={{ height: 16 }} /><Skeleton h={32} w="60%" /></div>;
@@ -88,9 +104,12 @@ export default function ItemPage({ params }: { params: Record<string, string> })
   const dupes = (related.data ?? []).filter((c) => item.duplicateGroup && c.duplicateGroup === item.duplicateGroup);
   const others = (related.data ?? []).filter((c) => !dupes.includes(c));
   const fav = isFavorite(item.id);
+  const isText = TEXT_TYPES.has(item.type);
 
   return (
-    <article className="container">
+    <article className={isText ? 'text-item' : undefined} ref={isText ? articleRef : undefined} style={isText ? { ['--reading-scale' as string]: readingScale } : undefined}>
+      {isText && <ReadingProgress target={articleRef} />}
+      <div className="container">
       <Breadcrumbs items={[{ label: 'בית', to: '/' }, { label: 'ספרייה', to: '/library' }, { label: TYPE_LABEL[item.type], to: `/library?type=${item.type}` }, { label: main }]} />
       {item.status !== 'published' && <Notice tone="warn" icon="lock">פריט זה אינו מפורסם ({item.status}). הוא מוצג לך כחבר צוות בלבד.</Notice>}
       <div className="item-layout" style={{ marginTop: 'var(--s-4)' }}>
@@ -116,9 +135,21 @@ export default function ItemPage({ params }: { params: Record<string, string> })
             </Button>
             <Share item={item} />
             {track && <Button variant="secondary" icon="queue" onClick={() => { player.enqueue(track); toast('נוסף לתור'); }}>הוספה לתור</Button>}
+            {isText && <ReadingTools scale={readingScale} onScale={setReadingScale} />}
           </div>
-          {item.summary && item.summary !== main && <p style={{ fontSize: 'var(--step-1)' }}>{item.summary}</p>}
-          {item.body.length > 0 && <BlockRenderer blocks={item.body} />}
+          {isText ? (
+            <div className="torah-sheet">
+              {item.summary && item.summary !== main && <p className="lede" style={{ fontSize: 'var(--step-1)' }}>{item.summary}</p>}
+              {item.body.length > 0
+                ? <BlockRenderer blocks={item.body} reading />
+                : <p>הטקסט המלא אינו שמור באתר. מוצג כאן רק מה שמתועד במקור, בלי השלמה.</p>}
+            </div>
+          ) : (
+            <>
+              {item.summary && item.summary !== main && <p style={{ fontSize: 'var(--step-1)' }}>{item.summary}</p>}
+              {item.body.length > 0 && <BlockRenderer blocks={item.body} />}
+            </>
+          )}
           {item.bookDetails && (
             <section className="side-card" style={{ margin: 'var(--s-6) 0' }} aria-labelledby="h-book">
               <h2 id="h-book" style={{ fontSize: 'var(--step-2)' }}>פרטי הפרסום</h2>
@@ -170,6 +201,7 @@ export default function ItemPage({ params }: { params: Record<string, string> })
         </section>
       )}
       <p className="soft" style={{ marginTop: 'var(--s-6)' }}><Icon name="info" /> כתוביות ופרקים מוצגים רק כשקיים להם מקור אמיתי. לפריט זה לא נוספו.</p>
+      </div>
     </article>
   );
 }

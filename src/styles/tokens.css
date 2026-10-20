@@ -53,6 +53,9 @@
   --font-scale: 1;
   --font-serif: 'Noto Serif Hebrew', 'David Libre', 'Times New Roman', serif;
   --font-sans: 'Assistant', 'Heebo', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --font-reading: 'Noto Serif Hebrew', 'David Libre', 'Times New Roman', serif;
+  --sheet: #f7f4ee;
+  --reading-measure: 42rem;
   --step--1: calc(0.875rem * var(--font-scale));
   --step-0: calc(1rem * var(--font-scale));
   --step-1: calc(1.125rem * var(--font-scale));
@@ -120,6 +123,7 @@
     --admin-rail-muted: #b7cdc3;
     --admin-rail-active: #0e5c48;
     --admin-rail-active-text: #ffffff;
+    --sheet: #1a2420;
   }
 }
 :root[data-theme='dark'] {
@@ -153,6 +157,7 @@
   --admin-rail-muted: #b7cdc3;
   --admin-rail-active: #0e5c48;
   --admin-rail-active-text: #ffffff;
+  --sheet: #1a2420;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -22,6 +22,11 @@ function mockDeps(over: Partial<Deps> = {}) {
       listUsers: async () => [],
       allRoles: async () => [],
       invite: async () => ({ token: 'invite-token', expiresAt: new Date(0).toISOString() }),
+      insertSignup: async (row: { channel: string; contact: string }) => {
+        if (rows.some((r) => r.channel === row.channel && r.contact === row.contact)) return 'exists' as const;
+        rows.push(row);
+        return 'created' as const;
+      },
     },
     ...over,
   };
@@ -80,6 +85,33 @@ test('probe: requires staff; SSRF errors surface as 400', async () => {
   assert.equal(ok.status, 200);
   assert.equal(((await ok.json()) as { playableNatively: boolean }).playableNatively, true);
   assert.equal((await handle(post('/api/import/probe', { url: 'https://127.0.0.1/x' }, { authorization: 'Bearer jwt-editor' }), '6.6.6.6', deps)).status, 400);
+});
+
+test('updates: stores email or mobile, no send, refuses bots and floods', async () => {
+  const { deps, rows } = mockDeps();
+  const good = { channel: 'email', contact: 'Reader@Example.com', consent: true, website: '', startedAt: Date.now() - 5000 };
+  const created = await handle(post('/api/updates', good), '8.8.8.8', deps);
+  assert.equal(created.status, 201);
+  assert.deepEqual(await created.json(), { ok: true });
+  assert.equal(rows[0]!.contact, 'reader@example.com');
+  assert.equal(rows[0]!.channel, 'email');
+  const again = await handle(post('/api/updates', good), '8.8.8.8', deps);
+  assert.equal(again.status, 201);
+  assert.equal(rows.length, 1);
+  assert.equal((await handle(post('/api/updates', { ...good, website: 'x' }), '8.8.8.9', deps)).status, 400);
+  assert.equal((await handle(post('/api/updates', { ...good, startedAt: Date.now() }), '8.8.8.10', deps)).status, 400);
+  assert.equal((await handle(post('/api/updates', { ...good, consent: false }), '8.8.8.11', deps)).status, 422);
+  assert.equal((await handle(post('/api/updates', { ...good, channel: 'whatsapp', contact: '03-111' }), '8.8.8.12', deps)).status, 422);
+  const phone = await handle(post('/api/updates', { ...good, channel: 'whatsapp', contact: '+972525556677' }), '8.8.8.13', deps);
+  assert.equal(phone.status, 201);
+  assert.equal(rows.find((r) => r.channel === 'whatsapp')!.contact, '0525556677');
+  const off = mockDeps({ client: null });
+  off.deps.env.configured = false;
+  assert.equal((await handle(post('/api/updates', good), '8.8.8.14', off.deps)).status, 503);
+  const flood = mockDeps();
+  const codes = [];
+  for (let i = 0; i < 6; i++) codes.push((await handle(post('/api/updates', { ...good, contact: `u${i}@example.com` }), '8.8.8.15', flood.deps)).status);
+  assert.deepEqual(codes, [201, 201, 201, 201, 201, 429]);
 });
 
 test('admin users endpoint requires admin/owner', async () => {

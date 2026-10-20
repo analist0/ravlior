@@ -293,9 +293,9 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const rows = await sql(
           `select m.id, m.content_id, m.provider, m.provider_id, m.kind, m.url, m.rights_status, c.title, c.slug, count(*) over () as total
            from public.media_sources m join public.content_items c on c.id = m.content_id
-           where ($1 = '' or m.kind = $1) and ($2 = '' or m.provider = $2)
+           where ($1 = '' or m.kind = $1) and ($2 = '' or m.provider::text = $2)
              and ($3 = '' or m.url ilike '%' || $3 || '%' or coalesce(m.provider_id, '') ilike '%' || $3 || '%')
-           order by case when $4 = 'provider' then m.provider else m.url end
+           order by case when $4 = 'provider' then m.provider::text else m.url end
            limit $5 offset $6`,
           [opts.kind ?? '', opts.provider ?? '', like(opts.q ?? ''), opts.sort === 'provider' ? 'provider' : 'url', pageSize, (page - 1) * pageSize],
         );
@@ -363,7 +363,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const order = opts.sort === 'status' ? 'status asc, created_at desc' : opts.sort === 'code' ? 'tracking_code asc' : 'created_at desc';
         const rows = await sql(
           `select *, count(*) over () as total from public.question_submissions
-           where ($1 = '' or status = $1) and ($2 = '' or question_text ilike '%' || $2 || '%' or tracking_code ilike '%' || $2 || '%')
+           where ($1 = '' or status::text = $1) and ($2 = '' or question_text ilike '%' || $2 || '%' or tracking_code ilike '%' || $2 || '%')
            order by ${order} limit 25 offset $3`,
           [opts.status ?? '', like(opts.q ?? ''), (page - 1) * 25],
         );
@@ -377,13 +377,13 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const patch = (a.patch ?? {}) as Record<string, unknown>;
         const rows = await sql(
           `update public.question_submissions set
-             answer_text = case when $4::bool then $5 else answer_text end,
-             answer_audio_path = case when $6::bool then $7 else answer_audio_path end,
-             assigned_to = case when $8::bool then $9::uuid else assigned_to end,
-             topic_id = case when $10::bool then $11::uuid else topic_id end,
+             answer_text = case when $3::bool then $4 else answer_text end,
+             answer_audio_path = case when $5::bool then $6 else answer_audio_path end,
+             assigned_to = case when $7::bool then $8::uuid else assigned_to end,
+             topic_id = case when $9::bool then $10::uuid else topic_id end,
              version = $2
            where id = $1 returning *`,
-          [a.id, a.expectedVersion, '', 'answerText' in patch, patch.answerText ?? null, 'answerAudioPath' in patch, patch.answerAudioPath ?? null, 'assignedTo' in patch, patch.assignedTo ?? null, 'topicId' in patch, patch.topicId ?? null],
+          [a.id, a.expectedVersion, 'answerText' in patch, patch.answerText ?? null, 'answerAudioPath' in patch, patch.answerAudioPath ?? null, 'assignedTo' in patch, patch.assignedTo ?? null, 'topicId' in patch, patch.topicId ?? null],
         );
         if (!rows[0]) throw new ApiError(403, 'שמירת השאלה נחסמה.', '42501');
         return questionRow(rows[0]);

@@ -7,6 +7,13 @@
     <meta name="theme-color" content="#f7f1e6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#14161c" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://i.ytimg.com" />
+    <style>
+      /* Crawlable HTML stays in the document. With JS it must not take layout space, or the app swap shifts the page. */
+      @media (scripting: enabled) {
+        #root > .prerendered { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      }
+    </style>
     <!--head-meta-->
     <title>אור המאיר — תורתו של הרב ליאור כהן</title>
     <meta name="description" content="ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול." />

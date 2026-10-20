@@ -15,10 +15,19 @@ export function applyQuery(all: ContentItem[], q: ContentQuery, topics: Topic[],
   const ser = q.series ? series.find((s) => s.slug === q.series) : undefined;
   let items = all.filter(isPublic);
   if (q.type) items = items.filter((c) => c.type === q.type);
+  if (q.hall === 'watch') items = items.filter((c) => c.type === 'video' || c.type === 'short' || c.type === 'live');
+  if (q.hall === 'listen') items = items.filter((c) => c.type === 'audio');
+  if (q.length === 'short') items = items.filter((c) => c.durationSeconds != null && c.durationSeconds < 600);
+  if (q.length === 'medium') items = items.filter((c) => c.durationSeconds != null && c.durationSeconds >= 600 && c.durationSeconds < 2400);
+  if (q.length === 'long') items = items.filter((c) => c.durationSeconds != null && c.durationSeconds >= 2400);
+  if (q.length === 'unknown') items = items.filter((c) => c.durationSeconds == null);
+  if (q.dated === 'known') items = items.filter((c) => !!(c.eventDate || c.sourcePublishedDate));
+  if (q.dated === 'unknown') items = items.filter((c) => !c.eventDate && !c.sourcePublishedDate);
   if (q.topic) items = topic ? items.filter((c) => c.topicIds.includes(topic.id)) : [];
   if (q.series) items = ser ? items.filter((c) => ser.items.includes(c.id)) : [];
   if (q.provider) items = items.filter((c) => c.sources.some((s) => s.provider === q.provider));
-  const text = (c: ContentItem) => `${c.title} ${c.summary ?? ''} ${c.speaker ?? ''}`;
+  const text = (c: ContentItem) =>
+    `${c.title} ${c.summary ?? ''} ${c.speaker ?? ''} ${c.transcript ?? ''} ${(c.chapters ?? []).map((ch) => ch.label).join(' ')}`;
   if (q.q?.trim()) items = items.filter((c) => heMatches(text(c), q.q!));
   const sorted = [...items];
   if (q.q?.trim()) {

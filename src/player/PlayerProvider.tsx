@@ -112,7 +112,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         hidden
       />
       {current && (
-        <section className="player-bar" aria-label="נגן אודיו">
+        <section
+          className="player-bar"
+          aria-label="נגן אודיו, ממשיך ברקע"
+          onKeyDown={(e) => {
+            const tag = (e.target as HTMLElement).tagName;
+            if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+            if (e.key === ' ' || e.key.toLowerCase() === 'k') { e.preventDefault(); toggle(); }
+            if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'j') { e.preventDefault(); seek(-15); }
+            if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'l') { e.preventDefault(); seek(30); }
+          }}
+        >
           <div className="container">
             <div className="player-inner">
               <button className="play-btn" onClick={toggle} aria-label={playing ? 'השהיה' : 'ניגון'}>
@@ -120,6 +130,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               </button>
               <div style={{ minWidth: 0 }}>
                 <Link to={`/item/${current.slug}`} className="player-title" style={{ display: 'block', color: 'var(--text)', textDecoration: 'none' }}>{current.title}</Link>
+                <span className="sr-only">ההאזנה נמשכת גם במעבר בין עמודים</span>
                 {error ? <span className="soft" role="alert" style={{ color: 'var(--danger)' }}>{error}</span> : (
                   <div className="row" style={{ gap: 'var(--s-2)', flexWrap: 'nowrap' }}>
                     <span className="player-time">{formatDuration(time)}</span>

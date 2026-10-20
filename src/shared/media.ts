@@ -76,12 +76,24 @@ export const IFRAME_ALLOWLIST: Record<string, (id: string) => string> = {
   youtube: (id) => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?rel=0&modestbranding=1`,
 };
 
-export function embedUrl(provider: MediaProvider, providerId: string | null): string | null {
+export function embedUrl(
+  provider: MediaProvider,
+  providerId: string | null,
+  opts?: { start?: number; autoplay?: boolean; jsapi?: boolean; origin?: string },
+): string | null {
   if (!providerId) return null;
   const make = IFRAME_ALLOWLIST[provider];
   if (!make) return null;
   if (provider === 'youtube' && !YT_ID.test(providerId)) return null;
-  return make(providerId);
+  const url = new URL(make(providerId));
+  const start = opts?.start != null ? Math.floor(opts.start) : 0;
+  if (start > 0) url.searchParams.set('start', String(start));
+  if (opts?.autoplay) url.searchParams.set('autoplay', '1');
+  if (opts?.jsapi) {
+    url.searchParams.set('enablejsapi', '1');
+    if (opts.origin) url.searchParams.set('origin', opts.origin);
+  }
+  return url.toString();
 }
 
 export function youtubeThumb(id: string, size: 'mq' | 'hq' = 'mq'): string {

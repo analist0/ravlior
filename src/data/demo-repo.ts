@@ -6,6 +6,7 @@ import { readJSON, removeKey, writeJSON } from '../app/storage.ts';
 import { DEFAULT_HOME, DEFAULT_MENUS, DEFAULT_PAGES } from '../shared/defaults.ts';
 import { heMatches } from '../shared/hebrew.ts';
 import { previewRows } from '../shared/importer.ts';
+import { chaptersFromUnknown, cleanTranscript } from '../shared/lesson.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
@@ -26,6 +27,17 @@ import type {
 
 const DB_KEY = 'demo-db.v1';
 const SESSION_KEY = 'demo-session.v1';
+
+function lessonChapters(value: unknown) {
+  const parsed = chaptersFromUnknown(value);
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.chapters;
+}
+function lessonTranscript(value: unknown) {
+  const cleaned = cleanTranscript(value);
+  if (!cleaned.ok) throw new Error(cleaned.error);
+  return cleaned.transcript;
+}
 
 interface DemoDB {
   schema: 1;
@@ -289,7 +301,8 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
           slug: d.slug || `${slugify(d.title ?? 'item')}-${id.slice(0, 6)}`, type: d.type ?? 'video', title: d.title ?? '', summary: d.summary ?? null,
           body: d.body ?? [], speaker: d.speaker ?? null, attributionStatus: d.attributionStatus ?? 'source_page', attributionNote: d.attributionNote ?? null,
           eventDate: d.eventDate ?? null, eventDateText: d.eventDateText ?? null, sourcePublishedDate: d.sourcePublishedDate ?? null,
-          durationSeconds: d.durationSeconds ?? parseDuration(d.durationText) ?? null, durationText: d.durationText ?? null, publishedAt: null,
+          durationSeconds: d.durationSeconds ?? parseDuration(d.durationText) ?? null, durationText: d.durationText ?? null,
+          chapters: lessonChapters(d.chapters), transcript: lessonTranscript(d.transcript), publishedAt: null,
           featured: d.featured ?? false, verification: d.verification ?? 'located', provenance: d.provenance ?? [{ section: 'cms', note: 'נוצר ב-CMS' }],
           duplicateGroup: null, catalogOrder: -Date.now(), topicIds: d.topicIds ?? [], seriesIds: [], sources: [], bookDetails: d.bookDetails ?? null,
           createdAt: now(), updatedAt: now(), ...base,
@@ -322,6 +335,8 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
       bump(entity, rec);
       Object.assign(rec, rest);
       if (entity === 'content' && 'durationText' in rest) (rec as ContentItem).durationSeconds = parseDuration(rest.durationText as string);
+      if (entity === 'content' && 'chapters' in rest) (rec as ContentItem).chapters = lessonChapters(rest.chapters);
+      if (entity === 'content' && 'transcript' in rest) (rec as ContentItem).transcript = lessonTranscript(rest.transcript);
       log('update', entity, id);
       persist();
       return clone(rec);

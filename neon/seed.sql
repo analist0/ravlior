@@ -903,7 +903,7 @@ insert into public.pages (id, slug, title, description, blocks, status) values
 on conflict do nothing;
 
 insert into public.menus (id, location, items) values
-  ('e7da1a27-78cb-5873-aa75-9442054af4cf', 'header', '[{"label":"ספרייה","href":"/library"},{"label":"סדרות","href":"/series"},{"label":"נושאים","href":"/topics"},{"label":"ספרים ועלונים","href":"/books"},{"label":"שו״ת","href":"/responsa"},{"label":"הרב והמוסדות","href":"/about"}]'::jsonb),
+  ('e7da1a27-78cb-5873-aa75-9442054af4cf', 'header', '[{"label":"אודיטוריום","href":"/watch"},{"label":"ספרייה","href":"/library"},{"label":"סדרות","href":"/series"},{"label":"נושאים","href":"/topics"},{"label":"ספרים ועלונים","href":"/books"},{"label":"שו״ת","href":"/responsa"},{"label":"הרב והמוסדות","href":"/about"}]'::jsonb),
   ('d59b971c-41bb-5332-a967-a5dd8967532c', 'footer', '[{"label":"נגישות","href":"/p/accessibility"},{"label":"פרטיות","href":"/p/privacy"},{"label":"תנאי שימוש","href":"/p/terms"},{"label":"יצירת קשר","href":"/p/contact"},{"label":"מקורות","href":"/sources"}]'::jsonb)
 on conflict do nothing;
 

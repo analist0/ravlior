@@ -5,7 +5,10 @@ import { Icon } from '../components/Icon.tsx';
 import { useConfirm } from '../components/Dialog.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Button, EmptyState, ErrorState, Notice, Pagination, SelectField, Skeleton, TextField } from '../components/ui.tsx';
+import { youtubeId } from '../shared/media.ts';
 import { BUCKETS, checkUpload, signedUrlValid, type BucketId } from '../shared/upload-policy.ts';
+import type { ContentItem, ContentType } from '../shared/types.ts';
+import type { ImportPreview } from '../data/repo.ts';
 import { useAdmin } from './AdminApp.tsx';
 import { canEdit } from '../shared/workflow.ts';
 
@@ -75,6 +78,14 @@ export default function MediaScreen() {
   const [probe, setProbe] = useState<Record<string, unknown> | null>(null);
   const [probeErr, setProbeErr] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
+  const [ytUrl, setYtUrl] = useState('');
+  const [ytTitle, setYtTitle] = useState('');
+  const [ytType, setYtType] = useState<ContentType>('video');
+  const [ytDuration, setYtDuration] = useState('');
+  const [ytBusy, setYtBusy] = useState(false);
+  const [ytPreview, setYtPreview] = useState<ImportPreview[] | null>(null);
+  const [lessonType, setLessonType] = useState('video');
+  const lessons = useAsync(() => repo.admin.list('content', { type: lessonType, pageSize: 12, sort: 'updated' }), [lessonType]);
 
   const doProbe = async () => {
     setProbing(true); setProbe(null); setProbeErr(null);
@@ -130,6 +141,84 @@ export default function MediaScreen() {
         </div>
         {probeErr && <p role="alert" style={{ color: 'var(--danger)' }}>{probeErr}</p>}
         {probe && <pre className="kbd" style={{ whiteSpace: 'pre-wrap', background: 'var(--bg-sunken)', padding: 'var(--s-3)', borderRadius: 'var(--r-2)' }}>{JSON.stringify(probe, null, 2)}</pre>}
+      </section>
+      {canEdit(roles) && (
+        <section className="panel" style={{ marginTop: 'var(--s-4)' }} aria-labelledby="h-yt">
+          <h2 id="h-yt"><Icon name="watch" /> שיעור חדש מקישור YouTube</h2>
+          <p className="soft">אותו ייבוא שכבר קיים: טיוטה עם הטמעה רשמית, בלי להוריד את הסרטון. הכותרת נלקחת ממה שתדביקו — האתר לא ממציא אותה.</p>
+          <div className="form-grid two">
+            <TextField label="קישור YouTube" dir="ltr" value={ytUrl} onChange={(e) => { setYtUrl(e.target.value); setYtPreview(null); }} placeholder="https://www.youtube.com/watch?v=…" />
+            <TextField label="כותרת כפי שבמקור" value={ytTitle} onChange={(e) => { setYtTitle(e.target.value); setYtPreview(null); }} />
+            <SelectField label="סוג" value={ytType} onChange={(e) => setYtType(e.target.value as ContentType)}>
+              <option value="video">וידאו</option>
+              <option value="short">קצר</option>
+              <option value="live">שידור מוקלט</option>
+              <option value="audio">אודיו</option>
+            </SelectField>
+            <TextField label="משך (לא חובה)" dir="ltr" value={ytDuration} onChange={(e) => setYtDuration(e.target.value)} placeholder="24:26" hint="רק אם הוא מופיע במקור" />
+          </div>
+          <div className="row" style={{ marginTop: 'var(--s-3)' }}>
+            <Button variant="secondary" busy={ytBusy} onClick={() => void (async () => {
+              setYtBusy(true);
+              try {
+                if (!youtubeId(ytUrl)) { toast('זה לא קישור YouTube תקין', { tone: 'error' }); return; }
+                const preview = await repo.admin.previewImport([{ title: ytTitle.trim(), type: ytType, url: ytUrl.trim(), durationText: ytDuration.trim() || undefined }]);
+                setYtPreview(preview);
+              } catch (e) { toast(errorMessage(e), { tone: 'error' }); }
+              finally { setYtBusy(false); }
+            })()}>בדיקת כפילות</Button>
+            <Button busy={ytBusy} disabled={!ytPreview?.some((p) => p.action === 'create')} onClick={() => void (async () => {
+              if (!ytPreview) return;
+              setYtBusy(true);
+              try {
+                const res = await repo.admin.commitImport(ytPreview.filter((p) => p.action === 'create').map((p) => p.row));
+                toast(`נוצרו ${res.created} טיוטות, דולגו ${res.skipped}`);
+                setYtPreview(null); setYtUrl(''); setYtTitle(''); setYtDuration('');
+                lessons.reload();
+              } catch (e) { toast(errorMessage(e), { tone: 'error' }); }
+              finally { setYtBusy(false); }
+            })()}>יצירת טיוטה</Button>
+          </div>
+          {ytPreview?.map((p, i) => (
+            <p key={i} role="status">{p.action === 'create' ? 'אפשר ליצור טיוטה.' : (p.reason ?? p.action)}</p>
+          ))}
+        </section>
+      )}
+      <section className="panel" style={{ marginTop: 'var(--s-4)' }} aria-labelledby="h-lessons">
+        <h2 id="h-lessons">שיעורים</h2>
+        <p className="soft">עריכת הכותרת, הפרקים והתמליל נשארת בכרטיס השיעור. כאן רואים את מצב המדיה.</p>
+        <SelectField label="סוג" value={lessonType} onChange={(e) => setLessonType(e.target.value)}>
+          <option value="video">וידאו</option>
+          <option value="short">קצר</option>
+          <option value="live">שידור מוקלט</option>
+          <option value="audio">אודיו</option>
+        </SelectField>
+        {lessons.error && <ErrorState error={lessons.error} onRetry={lessons.reload} />}
+        {lessons.loading && !lessons.data && <Skeleton h={120} />}
+        {lessons.data && lessons.data.items.length === 0 && <EmptyState title="אין שיעורים מהסוג הזה" />}
+        {!!lessons.data?.items.length && (
+          <div className="table-wrap">
+            <table className="data">
+              <caption className="sr-only">שיעורים</caption>
+              <thead><tr><th>שיעור</th><th>משך</th><th>מדיה</th><th>פרקים</th><th>תמליל</th></tr></thead>
+              <tbody>
+                {lessons.data.items.map((row) => {
+                  const item = row as ContentItem;
+                  const yt = item.sources?.find((s) => s.provider === 'youtube' && s.providerId);
+                  return (
+                    <tr key={item.id}>
+                      <td className="title-cell"><Link to={`/admin/content/${item.id}`}>{item.title || '(ללא כותרת)'}</Link></td>
+                      <td className="ltr">{item.durationText || '—'}</td>
+                      <td>{yt ? <span className="ltr">{yt.providerId}</span> : item.sources?.[0]?.provider ?? '—'}</td>
+                      <td>{item.chapters?.length ? item.chapters.length : '—'}</td>
+                      <td>{item.transcript ? 'יש' : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
       <section className="panel" style={{ marginTop: 'var(--s-4)' }} aria-labelledby="h-catalog">
         <h2 id="h-catalog">קטלוג מקורות</h2>

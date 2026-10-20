@@ -108,7 +108,7 @@ export function BottomNav({ onSearch }: { onSearch: () => void }) {
   return (
     <nav className="bottom-nav" aria-label="ניווט מהיר">
       <Link to="/"><Icon name="home" />בית</Link>
-      <Link to="/library"><Icon name="library" />ספרייה</Link>
+      <Link to="/watch"><Icon name="watch" />אולם</Link>
       <button onClick={onSearch}><Icon name="search" />חיפוש</button>
       <Link to="/ask"><Icon name="ask" />לשאול</Link>
       <Link to="/favorites"><Icon name="bookmark" />שמורים</Link>

@@ -2,6 +2,7 @@
 import { validateArchive } from '../src/shared/archives.ts';
 import { slugify } from '../src/shared/hebrew.ts';
 import { previewRows } from '../src/shared/importer.ts';
+import { chaptersFromUnknown, cleanTranscript } from '../src/shared/lesson.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../src/shared/media.ts';
 import { relatedItems } from '../src/shared/query.ts';
 import type {
@@ -12,7 +13,7 @@ import type { ArchiveInput, EntityName, EntityRecord, ImportRow, ListOptions, Me
 import { ApiError, asOwner, withActor, type Row, type Sql } from './db.ts';
 import { signMedia } from './media-sign.ts';
 
-const JSON_COLS = new Set(['body', 'provenance', 'blocks', 'source_urls', 'answer_blocks', 'items', 'config', 'settings']);
+const JSON_COLS = new Set(['body', 'provenance', 'blocks', 'source_urls', 'answer_blocks', 'items', 'config', 'settings', 'chapters']);
 const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 const snake = (k: string) => k.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
 const fromRow = <T,>(r: Row): T => Object.fromEntries(Object.entries(r).map(([k, v]) => [camel(k), v])) as T;
@@ -23,7 +24,7 @@ const TABLE: Record<EntityName, string> = {
   institutions: 'institutions', events: 'events', publicQuestions: 'public_questions',
 };
 const WRITABLE: Record<EntityName, string[]> = {
-  content: ['slug', 'type', 'title', 'summary', 'body', 'speaker', 'attribution_status', 'attribution_note', 'event_date', 'event_date_text', 'source_published_date', 'duration_seconds', 'duration_text', 'status', 'featured', 'verification', 'provenance', 'duplicate_group', 'catalog_order'],
+  content: ['slug', 'type', 'title', 'summary', 'body', 'speaker', 'attribution_status', 'attribution_note', 'event_date', 'event_date_text', 'source_published_date', 'duration_seconds', 'duration_text', 'chapters', 'transcript', 'status', 'featured', 'verification', 'provenance', 'duplicate_group', 'catalog_order'],
   topics: ['slug', 'name', 'description', 'sort', 'auto', 'status'],
   series: ['slug', 'title', 'description', 'kind', 'source_url', 'status', 'sort'],
   pages: ['slug', 'title', 'description', 'blocks', 'status'],
@@ -58,7 +59,23 @@ function mapContent(row: Row): ContentItem {
   item.bookDetails = book ? fromRow(book) : null;
   item.body = Array.isArray(item.body) ? item.body : [];
   item.provenance = Array.isArray(item.provenance) ? item.provenance : [];
+  const chapters = chaptersFromUnknown(item.chapters);
+  item.chapters = chapters.ok ? chapters.chapters : [];
+  item.transcript = typeof item.transcript === 'string' && item.transcript.trim() ? item.transcript : null;
   return item;
+}
+
+function applyLessonFields(d: Record<string, unknown>): void {
+  if ('chapters' in d) {
+    const parsed = chaptersFromUnknown(d.chapters);
+    if (!parsed.ok) throw new ApiError(422, parsed.error);
+    d.chapters = parsed.chapters;
+  }
+  if ('transcript' in d) {
+    const cleaned = cleanTranscript(d.transcript);
+    if (!cleaned.ok) throw new ApiError(422, cleaned.error);
+    d.transcript = cleaned.transcript;
+  }
 }
 
 async function fetchContent(sql: Sql, ids: string[]): Promise<ContentItem[]> {
@@ -131,8 +148,8 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const page = Math.max(1, Number(q.page ?? 1));
         const pageSize = Math.min(100, Math.max(1, Number(q.pageSize ?? 24)));
         const rows = await sql(
-          `select id, total from public.search_content($1, $2::public.content_type, $3, $4, $5::public.media_provider, $6, $7, $8)`,
-          [q.q ?? '', blank(q.type), blank(q.topic), blank(q.series), blank(q.provider), q.sort ?? 'newest', pageSize, (page - 1) * pageSize],
+          `select id, total from public.search_content($1, $2::public.content_type, $3, $4, $5::public.media_provider, $6, $7, $8, $9, $10, $11)`,
+          [q.q ?? '', blank(q.type), blank(q.topic), blank(q.series), blank(q.provider), q.sort ?? 'newest', pageSize, (page - 1) * pageSize, blank(q.length), blank(q.dated), blank(q.hall)],
         );
         return { items: await fetchContent(sql, rows.map((r) => String(r.id))), total: Number(rows[0]?.total ?? 0), page, pageSize };
       }
@@ -219,6 +236,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         if (entity === 'content') {
           d.durationSeconds ??= parseDuration((d.durationText as string | null) ?? null);
           d.catalogOrder ??= -Math.floor(Date.now() / 1000);
+          applyLessonFields(d);
         }
         const built = vals(d, WRITABLE[entity].filter((c) => c !== 'status' || d.status != null));
         if (!built.cols.length) throw new ApiError(400, 'אין נתונים לשמירה');
@@ -241,6 +259,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const patch = { ...(a.patch as Record<string, unknown>) };
         delete patch.status; delete patch.deletedAt;
         if (entity === 'content' && 'durationText' in patch) patch.durationSeconds = parseDuration(patch.durationText as string | null);
+        if (entity === 'content') applyLessonFields(patch);
         const built = vals(patch, WRITABLE[entity].filter((c) => c !== 'status'));
         const sets = built.cols.map((c, i) => `${c} = $${i + 1}${built.casts[i]}`);
         const params = [...built.params, a.expectedVersion, a.id];

@@ -1,7 +1,9 @@
+import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
 import { useLibraryState } from '../app/library-state.tsx';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
+import { homeJsonLd } from '../shared/seo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { CardGrid, MediaPlayer } from '../components/Media.tsx';
 import { HeroArt, Reveal } from '../components/Motion.tsx';
@@ -153,7 +155,7 @@ function Section({ s }: { s: HomeSection }) {
 export function HomePage() {
   const repo = useRepo();
   const sections = useAsync(() => repo.getHomeSections(), [repo]);
-  useHead({ title: '', description: 'ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול.', path: '/' });
+  useHead({ title: '', description: 'ספריית שיעורים, דרשות, ספרים ותשובות של הרב ליאור כהן ומוסדות אור המאיר — לצפות, להאזין, לעיין ולשאול.', path: '/', jsonLd: homeJsonLd(SITE_URL) });
   const enabled = (sections.data ?? []).filter((s) => s.enabled).sort((a, b) => a.position - b.position);
   const showActions = enabled.some((s) => s.kind === 'actions');
   return (

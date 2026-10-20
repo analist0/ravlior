@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { handle, type Deps } from '../server/handlers.ts';
 import { sha256Hex } from '../src/shared/questions.ts';
 import { SsrfError } from '../server/lib/ssrf.ts';
+import type { SeoCatalog } from '../src/shared/seo.ts';
+import type { ContentItem, PublicQuestion } from '../src/shared/types.ts';
 
 // In-memory stand-in for the database client. SQL authorization is covered by neon/verify/rls_checks.sql.
 function mockDeps(over: Partial<Deps> = {}) {
   const rows: Record<string, unknown>[] = [];
   const roles: Record<string, string[]> = { 'jwt-editor': ['editor'], 'jwt-viewer': ['viewer'] };
   const deps: Deps = {
-    env: { databaseUrl: 'postgres://local/test', authSecret: 'test-secret-16chars', rateSalt: 'salt', importAllowlist: ['kol-barama.co.il'], siteUrl: '', configured: true },
+    env: { databaseUrl: 'postgres://local/test', authSecret: 'test-secret-16chars', rateSalt: 'salt', importAllowlist: ['kol-barama.co.il'], siteUrl: '', indexNowKey: '', configured: true },
     now: Date.now,
     probe: async (u) => { if (u.includes('127.0.0.1')) throw new SsrfError('blocked'); return { finalUrl: u, status: 200, contentType: 'audio/mpeg', contentLength: 1234, redirects: 0, bytesRead: 0 }; },
     client: {
@@ -87,4 +89,90 @@ test('admin users endpoint requires admin/owner', async () => {
   const res = await handle(new Request('http://x/api/admin/users', { headers: { authorization: 'Bearer jwt-editor' } }), '7.7.7.7', deps);
   assert.equal(res.status, 403);
   assert.equal((await handle(new Request('http://x/api/nope'), '7.7.7.7', deps)).status, 404);
+});
+
+const SITE = 'https://elyashar.online';
+
+function seoCatalog(): SeoCatalog {
+  const answer: ContentItem = {
+    id: 'c-answer', slug: 'תשובה-לדוגמה', type: 'answer', title: 'תשובה לדוגמה',
+    summary: null, body: [{ type: 'paragraph', text: 'התשובה המלאה מופיעה כאן לקורא ולמנוע החיפוש.' }],
+    speaker: 'הרב ליאור כהן', attributionStatus: 'source_page', attributionNote: null,
+    eventDate: null, eventDateText: null, sourcePublishedDate: null, durationSeconds: null, durationText: null,
+    status: 'published', publishedAt: '2024-03-15T00:00:00.000Z', featured: false, verification: 'located',
+    provenance: [], duplicateGroup: null, catalogOrder: 1, topicIds: [], seriesIds: [], sources: [],
+    bookDetails: null, version: 1, createdAt: '2024-03-15T00:00:00.000Z', updatedAt: '2024-03-15T12:00:00.000Z', deletedAt: null,
+  };
+  const question: PublicQuestion = {
+    id: 'q1', slug: 'שאלה-מפורסמת', questionText: 'האם מותר להזכיר את שם האם בתפילה?',
+    answerBlocks: [{ type: 'paragraph', text: 'נוסח התשובה שאושר לפרסום.' }],
+    answerAudioUrl: null, topicId: null, attribution: 'הרב ליאור כהן', approvedByRabbi: true,
+    publishedAt: '2024-04-01T00:00:00.000Z', status: 'published', version: 1, deletedAt: null,
+  };
+  return {
+    site: SITE, content: [answer], topics: [], series: [], pages: [], questions: [question],
+    institutions: [], events: [], archives: [],
+    redirects: [
+      { fromPath: '/item/old-slug', toPath: '/item/תשובה-לדוגמה' },
+      { fromPath: '/item/stolen', toPath: 'https://evil.example/phish' },
+    ],
+  };
+}
+
+function seoDeps(over: Partial<Deps['env']> = {}) {
+  const { deps } = mockDeps();
+  deps.env.siteUrl = SITE;
+  deps.seoCatalog = async () => seoCatalog();
+  Object.assign(deps.env, over);
+  return deps;
+}
+
+test('sitemap, robots and IndexNow key', async () => {
+  const missing = mockDeps().deps;
+  assert.equal((await handle(new Request('http://x/sitemap.xml'), '8.8.8.8', missing)).status, 404);
+  const res = await handle(new Request('http://x/sitemap.xml'), '8.8.8.8', seoDeps());
+  assert.equal(res.status, 200);
+  const xml = await res.text();
+  assert.match(xml, /<sitemapindex/);
+  assert.match(xml, /<lastmod>2024-04-01<\/lastmod>/);
+  assert.match(xml, /sitemap-answers\.xml/);
+  assert.match(xml, /sitemap-questions\.xml/);
+  const answers = await handle(new Request('http://x/sitemap-answers.xml'), '8.8.8.8', seoDeps());
+  const answersXml = await answers.text();
+  assert.match(answersXml, /%D7%AA%D7%A9%D7%95%D7%91%D7%94/);
+  assert.match(answersXml, /<lastmod>2024-03-15<\/lastmod>/);
+  const robots = await handle(new Request('http://x/robots.txt'), '8.8.8.8', seoDeps());
+  const robotsBody = await robots.text();
+  assert.match(robotsBody, /Sitemap: https:\/\/elyashar\.online\/sitemap\.xml/);
+  assert.match(robotsBody, /Disallow: \/admin/);
+  assert.equal((await handle(new Request('http://x/indexnow-key.txt'), '8.8.8.8', seoDeps())).status, 404);
+  const key = await handle(new Request('http://x/indexnow-key.txt'), '8.8.8.8', seoDeps({ indexNowKey: 'abcd1234' }));
+  assert.equal(key.status, 200);
+  assert.equal(await key.text(), 'abcd1234');
+});
+
+test('content HTML is complete, and redirects stay on this site', async () => {
+  const page = await handle(new Request('http://x/item/%D7%AA%D7%A9%D7%95%D7%91%D7%94-%D7%9C%D7%93%D7%95%D7%92%D7%9E%D7%94'), '8.8.8.8', seoDeps());
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type') ?? '', /text\/html/);
+  const html = await page.text();
+  assert.match(html, /התשובה המלאה מופיעה כאן/);
+  assert.match(html, /rel="canonical"/);
+  assert.match(html, /hreflang="he"/);
+  assert.match(html, /QAPage/);
+  assert.doesNotMatch(html, /http-equiv="refresh"/i);
+  const viaApi = await handle(new Request('http://x/api/seo/page?path=/responsa/שאלה-מפורסמת'), '8.8.8.8', seoDeps());
+  assert.match(await viaApi.text(), /נוסח התשובה שאושר לפרסום/);
+  const moved = await handle(new Request('http://x/item/old-slug'), '8.8.8.8', seoDeps());
+  assert.equal(moved.status, 301);
+  const location = moved.headers.get('location') ?? '';
+  assert.equal(location, `${SITE}/item/${encodeURI('תשובה-לדוגמה')}`);
+  assert.equal(new URL(location).host, 'elyashar.online');
+  const stolen = await handle(new Request('http://x/item/stolen'), '8.8.8.8', seoDeps());
+  assert.notEqual(stolen.status, 301);
+  assert.equal(stolen.headers.get('location'), null);
+  assert.doesNotMatch(await stolen.text(), /evil\.example/);
+  const slash = await handle(new Request('http://x/item/old-slug/'), '8.8.8.8', seoDeps());
+  assert.equal(slash.status, 301);
+  assert.equal(new URL(slash.headers.get('location') ?? '').pathname, `/item/${encodeURI('תשובה-לדוגמה')}`);
 });

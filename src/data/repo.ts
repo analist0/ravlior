@@ -132,6 +132,8 @@ export interface Repository {
   getHomeSections(): Promise<HomeSection[]>;
   listPublicQuestions(q?: string): Promise<PublicQuestion[]>;
   getPublicQuestion(slug: string): Promise<PublicQuestion | null>;
+  /** On-site path to follow after a slug change, or null. Never an external URL. */
+  resolveRedirect(path: string): Promise<string | null>;
   getModules(): Promise<ModuleState[]>;
   submitQuestion(input: QuestionInput): Promise<{ trackingCode: string; token: string }>;
   trackQuestion(code: string, token: string): Promise<TrackResult | null>;

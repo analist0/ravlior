@@ -1,10 +1,13 @@
+import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
+import { useCanonicalRedirect } from '../app/redirect.tsx';
 import { usePrefs } from '../app/prefs.tsx';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { Icon } from '../components/Icon.tsx';
 import { CardGrid } from '../components/Media.tsx';
 import { Breadcrumbs, CardSkeletons, EmptyState, ErrorState, Notice } from '../components/ui.tsx';
+import { breadcrumbJsonLd } from '../shared/seo.ts';
 import { NotFound } from './NotFound.tsx';
 
 export function SeriesList() {
@@ -38,7 +41,14 @@ export function SeriesPage({ params }: { params: Record<string, string> }) {
   const repo = useRepo();
   const { prefs } = usePrefs();
   const r = useAsync(() => repo.getSeries(params.slug ?? ''), [params.slug]);
-  useHead({ title: r.data?.series.title ?? 'סדרה', description: r.data?.series.description ?? null, path: `/series/${params.slug}` });
+  const missing = !r.loading && !r.error && !r.data;
+  useCanonicalRedirect(missing, `/series/${params.slug ?? ''}`);
+  useHead({
+    title: r.data?.series.title ?? 'סדרה',
+    description: r.data?.series.description ?? null,
+    path: r.data ? `/series/${r.data.series.slug}` : `/series/${params.slug}`,
+    jsonLd: r.data ? breadcrumbJsonLd(SITE_URL, [{ name: 'בית', path: '/' }, { name: 'סדרות', path: '/series' }, { name: r.data.series.title, path: `/series/${r.data.series.slug}` }]) : null,
+  });
   if (r.loading) return <div className="container section"><CardSkeletons /></div>;
   if (r.error) return <div className="container section"><ErrorState error={r.error} onRetry={r.reload} /></div>;
   if (!r.data) return <NotFound />;

@@ -168,6 +168,24 @@ select pg_temp.ok(pg_temp.raises($$delete from public.user_roles where user_id =
   'owner cannot remove their own owner role');
 select pg_temp.back();
 
+-- ——— on-site redirects ———
+select pg_temp.act(null, 'app_anon');
+select pg_temp.ok(pg_temp.raises($$insert into public.url_redirects (from_path, to_path) values ('/item/old', '/item/new')$$), 'anon cannot insert redirects');
+select pg_temp.back();
+select pg_temp.act('00000000-0000-4000-a000-000000000006', 'app_api');
+select pg_temp.ok(pg_temp.raises($$insert into public.url_redirects (from_path, to_path) values ('/item/v', '/item/w')$$), 'viewer cannot write redirects');
+select pg_temp.back();
+select pg_temp.act('00000000-0000-4000-a000-000000000003', 'app_api');
+insert into public.url_redirects (from_path, to_path) values ('/item/old-slug', '/item/new-slug');
+insert into public.url_redirects (from_path, to_path) values ('/item/ישן', '/item/חדש');
+select pg_temp.ok(exists (select 1 from public.url_redirects where from_path = '/item/ישן' and to_path = '/item/חדש'), 'editor can store a Hebrew on-site redirect');
+select pg_temp.ok(pg_temp.raises($$insert into public.url_redirects (from_path, to_path) values ('/item/x', 'https://evil.example/phish')$$), 'external redirect target is rejected');
+select pg_temp.ok(pg_temp.raises($$insert into public.url_redirects (from_path, to_path) values ('/item/y', '//evil.example/phish')$$), 'protocol-relative redirect is rejected');
+select pg_temp.back();
+select pg_temp.act(null, 'app_anon');
+select pg_temp.ok(exists (select 1 from public.url_redirects where from_path = '/item/old-slug' and to_path = '/item/new-slug'), 'anon can read on-site redirects');
+select pg_temp.back();
+
 -- ——— Hebrew normalization parity with src/shared/hebrew.ts (tests/hebrew.test.ts uses the same inputs) ———
 select pg_temp.ok(public.he_normalize('עוּלוּ אוּשְׁפִּיזִין') = 'עולו אושפיזינ', 'he_normalize strips niqqud and folds final letters (matches JS)');
 select pg_temp.ok(public.he_normalize('זצ"ל') = public.he_normalize('זצ״ל') and public.he_normalize('ט"ו באב') = 'טו באב', 'he_normalize ignores geresh/gershayim (matches JS)');

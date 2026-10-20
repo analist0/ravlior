@@ -1,4 +1,6 @@
+import { SITE_URL } from '../app/config.ts';
 import { useHead } from '../app/head.ts';
+import { useCanonicalRedirect } from '../app/redirect.tsx';
 import { useLibraryState } from '../app/library-state.tsx';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
@@ -9,6 +11,7 @@ import { usePlayer } from '../player/PlayerProvider.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, TYPE_LABEL, formatHebDate, splitTitle } from '../components/ui.tsx';
 import { NotFound } from './NotFound.tsx';
+import { contentJsonLd } from '../shared/seo.ts';
 import type { AttributionStatus, ContentItem, MediaSource } from '../shared/types.ts';
 
 const ATTRIBUTION: Record<AttributionStatus, string> = {
@@ -68,13 +71,20 @@ export default function ItemPage({ params }: { params: Record<string, string> })
   const series = useAsync(() => repo.listSeries(), [repo]);
   const related = useAsync(() => (item ? repo.related(item, 8) : Promise.resolve([])), [item?.id]);
   const [main, sub] = item ? splitTitle(item.title) : ['', null];
+  const thumb = item ? thumbFor(item) : null;
+  const missing = !r.loading && !r.error && !item;
+  useCanonicalRedirect(missing, `/item/${params.slug ?? ''}`);
   useHead({
     title: main,
-    description: item ? (item.summary ?? sub ?? `${TYPE_LABEL[item.type]} — ${main}`).slice(0, 180) : null,
+    description: item ? (item.summary ?? sub ?? item.attributionNote ?? `${TYPE_LABEL[item.type]} — ${main}`).slice(0, 180) : null,
     path: item ? `/item/${item.slug}` : undefined,
-    image: item ? thumbFor(item) : null,
+    image: thumb,
+    imageAlt: main || null,
+    imageWidth: thumb ? 480 : null,
+    imageHeight: thumb ? 360 : null,
     type: item?.type === 'video' || item?.type === 'short' ? 'video.other' : 'article',
     noindex: item ? item.status !== 'published' : false,
+    jsonLd: item && item.status === 'published' ? contentJsonLd(SITE_URL, item) : null,
   });
 
   if (r.loading) return <div className="container section"><Skeleton h={320} /><div style={{ height: 16 }} /><Skeleton h={32} w="60%" /></div>;
@@ -103,6 +113,7 @@ export default function ItemPage({ params }: { params: Record<string, string> })
               {item.verification === 'candidate' && <Badge tone="warn">ייחוס מועמד — טעון בדיקה</Badge>}
             </div>
             <h1 style={{ fontSize: 'var(--step-4)' }}>{main}</h1>
+            {item.type === 'answer' && <p><Link to="/responsa">לכל השאלות והתשובות</Link></p>}
             {sub && <p className="muted" style={{ fontSize: 'var(--step-1)' }}>{sub}</p>}
             <p className="soft">
               {item.speaker ?? 'ערוץ מוסדות אור המאיר'}

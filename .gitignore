@@ -10,3 +10,4 @@ import-jobs/
 termux-smoke-*.log
 .preview.pid
 .dev.pid
+server/seo-shell.json

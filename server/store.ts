@@ -1,6 +1,7 @@
 // Repository operations executed under RLS (withActor). Column names are whitelisted.
 import { validateArchive } from '../src/shared/archives.ts';
 import { slugify } from '../src/shared/hebrew.ts';
+import { entityPath, followRedirect, internalTarget, publicSlug, type SeoCatalog } from '../src/shared/seo.ts';
 import { previewRows } from '../src/shared/importer.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../src/shared/media.ts';
 import { relatedItems } from '../src/shared/query.ts';
@@ -112,12 +113,39 @@ async function getOne(sql: Sql, entity: EntityName, id: string): Promise<EntityR
 }
 
 export async function loadPrerender(sql: Sql) {
+  const data = await loadSeoCatalog(sql);
+  return { content: data.content, topics: data.topics, series: data.series, pages: data.pages };
+}
+
+export async function loadSeoCatalog(sql: Sql): Promise<SeoCatalog> {
   const content = (await sql(`${CONTENT_SQL} where c.status = 'published' and c.deleted_at is null`)).map(mapContent);
   const topics = (await sql(`select * from public.topics where status = 'published' and deleted_at is null order by sort`)).map((r) => fromRow<Topic>(r));
   const series = (await sql(`select s.*, coalesce((select jsonb_agg(si.content_id order by si.position) from public.series_items si where si.series_id = s.id), '[]'::jsonb) as items
     from public.series s where s.status = 'published' and s.deleted_at is null order by s.sort`)).map((r) => ({ ...fromRow<Series>(r), items: Array.isArray(r.items) ? r.items as string[] : [] }));
   const pages = (await sql(`select * from public.pages where status = 'published' and deleted_at is null`)).map((r) => fromRow<Page>(r));
-  return { content, topics, series, pages };
+  const questions = (await sql(`select * from public.public_questions where status = 'published' and deleted_at is null`)).map((r) => {
+    const q = fromRow<PublicQuestion>(r);
+    q.answerBlocks = Array.isArray(q.answerBlocks) ? q.answerBlocks : [];
+    return q;
+  });
+  const institutions = (await sql(`select * from public.institutions where status = 'published' and deleted_at is null`)).map((r) => fromRow<Institution>(r));
+  const events = (await sql(`select * from public.events where status = 'published' and deleted_at is null`)).map((r) => fromRow<EventRecord>(r));
+  const archives = (await sql(`select * from public.source_archives`)).map((r) => fromRow<SourceArchive>(r));
+  const redirects = (await sql(`select from_path, to_path from public.url_redirects limit 500`)).map((r) => ({ fromPath: String(r.from_path), toPath: String(r.to_path) }));
+  return { site: '', content, topics, series, pages, questions, institutions, events, archives, redirects };
+}
+
+async function writeRedirect(sql: Sql, fromPath: string, toPath: string): Promise<void> {
+  const from = internalTarget(fromPath);
+  const to = internalTarget(toPath);
+  if (!from || !to || from === to) return;
+  await sql(`update public.url_redirects set to_path = $2 where to_path = $1`, [from, to]);
+  await sql(`delete from public.url_redirects where from_path = $1`, [to]);
+  await sql(
+    `insert into public.url_redirects (from_path, to_path) values ($1, $2) on conflict (from_path) do update set to_path = excluded.to_path`,
+    [from, to],
+  );
+  await sql(`delete from public.url_redirects where from_path = to_path`);
 }
 
 async function run(userId: string | null, op: string, a: Record<string, unknown>, secret: string): Promise<unknown> {
@@ -174,6 +202,10 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const rows = await sql(`select * from public.pages where slug = $1 and deleted_at is null`, [a.slug]);
         return rows[0] ? fromRow<Page>(rows[0]) : null;
       }
+      case 'redirects.resolve': {
+        const rows = await sql(`select from_path, to_path from public.url_redirects limit 500`);
+        return followRedirect(rows.map((r) => ({ fromPath: String(r.from_path), toPath: String(r.to_path) })), String(a.path ?? ''));
+      }
       case 'menus':
         return (await sql(`select * from public.menus`)).map((r) => fromRow<Menu>(r));
       case 'home':
@@ -215,7 +247,8 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
       case 'admin.create': {
         const entity = entityOf(a.entity);
         const d = { ...(a.data as Record<string, unknown>) };
-        if (!d.slug) d.slug = `${slugify(String(d.title ?? d.name ?? d.questionText ?? 'item'))}-${crypto.randomUUID().slice(0, entity === 'content' ? 6 : 4)}`;
+        if (typeof d.slug === 'string' && d.slug) d.slug = publicSlug(d.slug);
+        else d.slug = `${slugify(String(d.title ?? d.name ?? d.questionText ?? 'item'))}-${crypto.randomUUID().slice(0, entity === 'content' ? 6 : 4)}`;
         if (entity === 'content') {
           d.durationSeconds ??= parseDuration((d.durationText as string | null) ?? null);
           d.catalogOrder ??= -Math.floor(Date.now() / 1000);
@@ -240,7 +273,9 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         const entity = entityOf(a.entity);
         const patch = { ...(a.patch as Record<string, unknown>) };
         delete patch.status; delete patch.deletedAt;
+        if (typeof patch.slug === 'string') patch.slug = publicSlug(patch.slug);
         if (entity === 'content' && 'durationText' in patch) patch.durationSeconds = parseDuration(patch.durationText as string | null);
+        const before = await getOne(sql, entity, String(a.id));
         const built = vals(patch, WRITABLE[entity].filter((c) => c !== 'status'));
         const sets = built.cols.map((c, i) => `${c} = $${i + 1}${built.casts[i]}`);
         const params = [...built.params, a.expectedVersion, a.id];
@@ -260,7 +295,16 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
             } else await sql(`delete from public.book_details where content_id = $1`, [a.id]);
           }
         }
-        return getOne(sql, entity, String(a.id));
+        const after = await getOne(sql, entity, String(a.id));
+        const oldSlug = before && 'slug' in before ? String(before.slug) : '';
+        const newSlug = after && 'slug' in after ? String(after.slug) : '';
+        const status = after && 'status' in after ? String(after.status) : '';
+        if (oldSlug && newSlug && oldSlug !== newSlug && status === 'published') {
+          const from = entityPath(entity, oldSlug);
+          const to = entityPath(entity, newSlug);
+          if (from && to) await writeRedirect(sql, from, to);
+        }
+        return after;
       }
       case 'admin.transition': {
         const entity = entityOf(a.entity);
@@ -406,7 +450,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         await mustWrite(sql, `update public.public_questions set status = 'approved', version = $2 where id = $1 returning id`, [pq.id, pq.version], 'אישור השו״ת');
         await mustWrite(sql, `update public.public_questions set status = 'published', version = $2 where id = $1 returning id`, [pq.id, Number(pq.version) + 1], 'פרסום השו״ת');
         await mustWrite(sql, `update public.question_submissions set status = 'published', public_question_id = $1, version = $2 where id = $3 returning id`, [pq.id, a.expectedVersion, a.id], 'עדכון השאלה');
-        return null;
+        return { id: String(pq.id), slug };
       }
       case 'admin.users': {
         if ((await sql(`select public.is_admin() as ok`))[0]?.ok !== true) throw new ApiError(403, 'ניהול משתמשים למנהלים בלבד.', '42501');

@@ -5,6 +5,7 @@ export interface ServerEnv {
   rateSalt: string;
   importAllowlist: string[];
   siteUrl: string;
+  indexNowKey: string;
   configured: boolean;
 }
 export function readEnv(env: Record<string, string | undefined> = process.env): ServerEnv {
@@ -16,6 +17,7 @@ export function readEnv(env: Record<string, string | undefined> = process.env): 
     rateSalt: env.RATE_LIMIT_SALT || 'dev-only-salt-change-me',
     importAllowlist: (env.IMPORT_URL_ALLOWLIST ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     siteUrl: (env.VITE_SITE_URL ?? env.SITE_URL ?? '').replace(/\/$/, ''),
+    indexNowKey: (env.INDEXNOW_KEY ?? '').trim(),
     configured: databaseUrl.length > 0 && authSecret.length >= 16,
   };
 }

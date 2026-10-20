@@ -91,6 +91,25 @@ test('question form anti-abuse: honeypot and too-fast submissions', async () => 
   await assert.rejects(repo.submitQuestion({ ...base, website: '', startedAt: Date.now() }), /מהר/);
 });
 
+test('published slug change records an on-site redirect', async () => {
+  localStorage.clear();
+  const repo = await createDemoRepository(load);
+  await repo.demoSignIn!('editor');
+  const c = (await repo.admin.create('content', { title: 'שיעור להפניה', type: 'audio' } as Partial<ContentItem>)) as ContentItem;
+  const oldPath = `/item/${c.slug}`;
+  await repo.admin.update('content', c.id, { summary: 'תקציר' } as Partial<ContentItem>, 1);
+  await repo.admin.transition('content', c.id, 'in_review', 2);
+  await repo.demoSignIn!('reviewer');
+  await repo.admin.transition('content', c.id, 'approved', 3);
+  await repo.admin.transition('content', c.id, 'published', 4);
+  await repo.demoSignIn!('editor');
+  const updated = (await repo.admin.update('content', c.id, { slug: 'שיעור-חדש' } as Partial<ContentItem>, 5)) as ContentItem;
+  const dest = await repo.resolveRedirect(oldPath);
+  assert.equal(dest, `/item/${updated.slug}`);
+  assert.notEqual(dest, updated.slug);
+  assert.equal(dest?.includes('://'), false);
+});
+
 test('roles: editor cannot manage users or modules; admin cannot grant owner', async () => {
   localStorage.clear();
   const repo = await createDemoRepository(load);

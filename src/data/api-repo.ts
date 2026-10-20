@@ -47,6 +47,7 @@ export async function createApiRepository(): Promise<Repository> {
     getHomeSections: () => rpc('home'),
     listPublicQuestions: (q) => rpc('pq.list', { q: q ?? '' }),
     getPublicQuestion: (slug) => rpc('pq.get', { slug }),
+    resolveRedirect: (path) => rpc('redirects.resolve', { path }),
     getModules: () => rpc('modules'),
     submitQuestion: (input: QuestionInput) => call('/api/questions', { method: 'POST', body: JSON.stringify(input) }),
     trackQuestion: (code, token) => rpc('track', { code, token }),

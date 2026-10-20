@@ -7,6 +7,15 @@ import { Icon } from './Icon.tsx';
 import { LessonPlayer } from './LessonPlayer.tsx';
 import { Badge, IconButton, TYPE_ICON, TYPE_LABEL, splitTitle } from './ui.tsx';
 import { useToast } from './Toast.tsx';
+import { PdfViewer } from './PdfViewer.tsx';
+
+/** Our own copy of a source file, served by /api/media. */
+export function hostedUrl(s: MediaSource): string | null {
+  return s.storageBucket && s.storagePath ? `/api/media/${s.storageBucket}/${s.storagePath}` : null;
+}
+export function hostedPdf(item: ContentItem): MediaSource | null {
+  return item.sources.find((s) => s.mime === 'application/pdf' && hostedUrl(s)) ?? null;
+}
 
 const PROVIDER_LABEL: Record<string, string> = {
   youtube: 'YouTube', 'kol-barama': 'קול ברמה', ykr: 'כסא רחמים', ktr: 'כתר מלוכה', 'hm-news': 'המחדש', pdf: 'PDF', storage: 'שמור אצלנו', web: 'אתר',
@@ -18,7 +27,7 @@ export function pickSource(item: ContentItem): { mode: 'embed' | 'native' | 'lin
   const media = item.sources.filter((s) => s.kind === 'media' && s.rightsStatus !== 'blocked');
   const embed = media.find((s) => s.deliveryMode === 'embed' && embedUrl(s.provider, s.providerId) && s.embedStatus !== 'failed');
   if (embed) return { mode: 'embed', source: embed };
-  const native = media.find((s) => (s.deliveryMode === 'direct' || s.deliveryMode === 'storage') && s.mime && NATIVE_PLAYABLE_MIME.includes(s.mime));
+  const native = item.sources.find((s) => s.rightsStatus !== 'blocked' && ((s.deliveryMode === 'storage' && hostedUrl(s)) || (s.kind === 'media' && s.deliveryMode === 'direct')) && s.mime && NATIVE_PLAYABLE_MIME.includes(s.mime));
   if (native) return { mode: 'native', source: native };
   const link = item.sources.find((s) => s.kind === 'media') ?? item.sources.find((s) => s.kind === 'pdf') ?? item.sources[0];
   return link ? { mode: 'link', source: link } : { mode: 'none', source: null };
@@ -27,7 +36,7 @@ export function pickSource(item: ContentItem): { mode: 'embed' | 'native' | 'lin
 export function playableTrack(item: ContentItem): Track | null {
   const { mode, source } = pickSource(item);
   if (mode !== 'native' || !source?.mime?.startsWith('audio/')) return null;
-  return { contentId: item.id, slug: item.slug, title: splitTitle(item.title)[0], src: source.url, mime: source.mime };
+  return { contentId: item.id, slug: item.slug, title: splitTitle(item.title)[0], src: hostedUrl(source) ?? source.url, mime: source.mime };
 }
 
 export function thumbFor(item: ContentItem): string | null {
@@ -136,16 +145,15 @@ export function MediaPlayer({ item, startAt = null, resume = true, notes = false
     );
   }
 
+  const pdf = hostedPdf(item);
+  if (pdf) return <PdfViewer src={hostedUrl(pdf)!} title={splitTitle(item.title)[0]} />;
+  // No outbound links: until a file is hosted here, say so plainly.
   return (
     <div className="state" style={{ padding: 'var(--s-6)' }}>
-      <Icon name="external" />
-      <h3 style={{ margin: 0 }}>המדיה זמינה באתר המקור</h3>
-      <p style={{ margin: 0 }}>
-        {`לפריט זה אין עדיין הטמעה מאושרת או קובץ שמור אצלנו. ${source.kind === 'pdf' ? 'הקובץ מתארח באתר המקור.' : ''}`}
-      </p>
-      <a className="btn btn-secondary" href={source.url} target="_blank" rel="noopener noreferrer">
-        <Icon name="external" /> פתיחה ב{providerLabel(source.provider)}<span className="sr-only"> (נפתח בחלון חדש)</span>
-      </a>
+      <Icon name="info" />
+      <h3 style={{ margin: 0 }}>המדיה של פריט זה עדיין לא הועלתה לאתר</h3>
+      <p style={{ margin: 0 }}>הצוות מעלה את הקבצים לאתר עצמו. התוכן יוצג כאן ברגע שיועלה.</p>
     </div>
   );
+
 }

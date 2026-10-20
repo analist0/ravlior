@@ -3,6 +3,8 @@ import { useHead } from '../app/head.ts';
 import { Link } from '../app/router.tsx';
 import { useAsync, useRepo } from '../data/repo.ts';
 import { BlockRenderer } from '../components/Blocks.tsx';
+import { hostedPdf, hostedUrl } from '../components/Media.tsx';
+import { PdfViewer } from '../components/PdfViewer.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, splitTitle } from '../components/ui.tsx';
 import { bookJsonLd, bookOffers, bookSample, bookToc } from '../shared/sections.ts';
@@ -72,13 +74,14 @@ export default function BookPage({ params }: { params: Record<string, string> })
             <h2 id="h-read">{sample.length ? 'לקריאה לדוגמה' : 'קריאה'}</h2>
             {reading.length ? <BlockRenderer blocks={reading} /> : <p className="soft">קטע לקריאה לא צורף. אין באתר ציטוט או תקציר שלא נשמר במפורש.</p>}
             {toc.map((t) => <span key={t.id} id={t.id} />)}
+            {hostedPdf(item) && <PdfViewer src={hostedUrl(hostedPdf(item)!)!} title={splitTitle(item.title)[0]} />}
           </section>
           {item.sources.length > 0 && (
             <section style={{ marginTop: 'var(--s-6)' }}>
               <h2>מקורות</h2>
               <ul>
                 {item.sources.map((s) => (
-                  <li key={s.id}><a href={s.url} target="_blank" rel="noopener noreferrer">{s.url} <Icon name="external" /></a></li>
+                  <li key={s.id} className="soft">{(() => { try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch { return s.provider; } })()}{s.storagePath ? ' · מתארח באתר' : ''}</li>
                 ))}
               </ul>
             </section>

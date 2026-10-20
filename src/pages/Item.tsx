@@ -7,7 +7,7 @@ import { useAsync, useRepo } from '../data/repo.ts';
 import { BlockRenderer } from '../components/Blocks.tsx';
 import { ReadingProgress, ReadingTools } from '../components/Reading.tsx';
 import { Icon } from '../components/Icon.tsx';
-import { CardGrid, MediaPlayer, pickSource, playableTrack, providerLabel, thumbFor } from '../components/Media.tsx';
+import { CardGrid, hostedPdf, MediaPlayer, pickSource, playableTrack, providerLabel, thumbFor } from '../components/Media.tsx';
 import { usePlayer } from '../player/PlayerProvider.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { Badge, Breadcrumbs, Button, ErrorState, Notice, Skeleton, TYPE_LABEL, formatHebDate, splitTitle } from '../components/ui.tsx';
@@ -36,11 +36,11 @@ function SourceList({ sources }: { sources: MediaSource[] }) {
         <li key={s.id} style={{ display: 'grid', gap: 4 }}>
           <div className="row" style={{ gap: 6 }}>
             <Badge>{KIND[s.kind]}</Badge><Badge tone="accent">{providerLabel(s.provider)}</Badge>
-            {s.storagePath ? <Badge tone="ok">נשמר אצלנו</Badge> : <Badge>מקושר</Badge>}
+            {s.storagePath ? <Badge tone="ok">מתארח באתר</Badge> : <Badge>טרם הועלה</Badge>}
           </div>
-          <a href={s.url} target="_blank" rel="noopener noreferrer" className="ltr" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
-            {decodeURI(s.url).replace(/^https:\/\/(www\.)?/, '').slice(0, 80)}
-          </a>
+          <span className="ltr soft" style={{ overflowWrap: 'anywhere', fontSize: 'var(--step--1)' }}>
+            מקור: {(() => { try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch { return providerLabel(s.provider); } })()}
+          </span>
           <span className="soft">{RIGHTS[s.rightsStatus]}{s.lastCheckedAt ? ` · נבדק ${formatHebDate(s.lastCheckedAt)}` : ' · זמינות לא נבדקה'}</span>
         </li>
       ))}
@@ -139,7 +139,7 @@ export default function ItemPage({ params }: { params: Record<string, string> })
       {item.status !== 'published' && <Notice tone="warn" icon="lock">פריט זה אינו מפורסם ({item.status}). הוא מוצג לך כחבר צוות בלבד.</Notice>}
       <div className="item-layout" style={{ marginTop: 'var(--s-4)' }}>
         <div>
-          {mode !== 'none' && <MediaPlayer item={item} startAt={startAt} notes />}
+          {mode !== 'none' && (mode !== 'link' || hostedPdf(item) || item.body.length === 0) && <MediaPlayer item={item} startAt={startAt} notes />}
           <header style={{ marginTop: 'var(--s-6)' }}>
             <div className="row" style={{ marginBottom: 'var(--s-3)' }}>
               <Badge tone="accent">{TYPE_LABEL[item.type]}</Badge>

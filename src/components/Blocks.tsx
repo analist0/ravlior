@@ -5,6 +5,7 @@ import { extractFootnotes, footnoteRuns } from '../shared/footnotes.ts';
 import type { Block } from '../shared/types.ts';
 import { Icon } from './Icon.tsx';
 import { CardGrid, MediaPlayer } from './Media.tsx';
+import { isOwnMediaUrl, PdfViewer } from './PdfViewer.tsx';
 
 // Whitelisted renderer: text is rendered as React text nodes (escaped); URLs pass safeUrl();
 // there is no dangerouslySetInnerHTML and no arbitrary iframe anywhere in this file.
@@ -81,7 +82,7 @@ export function BlockRenderer({ blocks, reading = false, anchorIds = false }: { 
           );
           case 'media': return <MediaBlock key={i} contentId={b.contentId} />;
           case 'pdf': return (
-            <p key={i}><a className="btn btn-secondary" href={b.src} target="_blank" rel="noopener noreferrer"><Icon name="file" /> {b.title}<span className="sr-only"> (PDF, נפתח בחלון חדש)</span></a></p>
+            isOwnMediaUrl(b.src) ? <PdfViewer key={i} src={b.src} title={b.title} /> : <p key={i} className="soft"><Icon name="file" /> {b.title} (הקובץ טרם הועלה לאתר)</p>
           );
           case 'related': return <RelatedBlock key={i} ids={b.contentIds} />;
           case 'cta': return (

@@ -82,6 +82,9 @@
   --bottom-nav-h: 64px;
   --player-h: 72px;
   --tap: 44px;
+  /* QR ink and paper stay fixed in both themes so a scanned code stays readable. */
+  --qr-ink: #10211c;
+  --qr-paper: #ffffff;
   color-scheme: light;
 }
 

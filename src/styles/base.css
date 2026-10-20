@@ -50,7 +50,7 @@ bdi, .ltr { unicode-bidi: isolate; }
 .section-head h2 { margin: 0; }
 .eyebrow { font-size: var(--step--1); letter-spacing: 0.04em; color: var(--gold-text); font-weight: 600; margin-bottom: var(--s-2); }
 
-main { display: block; min-height: 60vh; padding-bottom: calc(var(--bottom-nav-h) + var(--s-8)); }
+main { display: block; min-height: calc(100dvh - var(--header-h)); padding-bottom: calc(var(--bottom-nav-h) + var(--s-8)); }
 body.has-player main { padding-bottom: calc(var(--bottom-nav-h) + var(--player-h) + var(--s-8)); }
 @media (min-width: 900px) {
   main { padding-bottom: var(--s-12); }

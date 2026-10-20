@@ -11,6 +11,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
 import './styles/admin.css';
+import './styles/qa.css';
 import { App } from './app/App.tsx';
 
 createRoot(document.getElementById('root')!).render(

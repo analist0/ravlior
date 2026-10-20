@@ -207,6 +207,8 @@ export interface PublicQuestion {
   hidden?: boolean;
   weekPick?: boolean;
   categoryId?: string | null;
+  /** Staff-only link back to the private submission. Omitted from public payloads. */
+  sourceSubmissionId?: string | null;
   tags?: string[];
   related?: PublicQuestion[];
 }

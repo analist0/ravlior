@@ -17,7 +17,7 @@
 Uploaded files are rows in `public.storage_objects` (`bytes` is `bytea`), so `pg_dump` of `public` includes them. Record the checksum next to imported files (`media_sources.checksum`).
 
 ## Restore
-1. An empty database → run, in order: `neon/migrations/001_schema.sql` … `006_grants.sql`, then `neon/seed.sql` if you are restoring the dossier rather than a dump, then `007_qa_workflow.sql` and `008_qa_bank.sql`. On a database that already has 001–006 and the seed, apply only `007` then `008`.
+1. An empty database → run, in order: `neon/migrations/001_schema.sql` … `006_grants.sql`, then `neon/seed.sql` if you are restoring the dossier rather than a dump, then `007_qa_workflow.sql`, `008_qa_bank.sql`, and `009_search_skeleton.sql`. On a database that already has 001–006 and the seed, apply only `007`, then `008`, then `009`.
 2. `pg_restore --data-only --disable-triggers -d "$DATABASE_URL" or-hameir-YYYY-MM-DD.dump` (`--disable-triggers` so versioning/audit do not change rows during the restore; requires the table owner).
 3. Run `neon/verify/rls_checks.sql` (rolls back automatically) to confirm permissions. `neon/verify/row_counts.sql` checks the dossier seed, not a later CMS dump.
 4. Rebuild the site (`npm run build`) so the pre-rendered pages reflect the data.

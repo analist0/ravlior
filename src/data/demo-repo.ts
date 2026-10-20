@@ -8,6 +8,7 @@ import { heMatches } from '../shared/hebrew.ts';
 import { previewRows } from '../shared/importer.ts';
 import { chaptersFromUnknown, cleanTranscript } from '../shared/lesson.ts';
 import { canonicalizeUrl, detectProvider, parseDuration, youtubeId } from '../shared/media.ts';
+import { youtubeMetaFromParts } from '../shared/youtube-meta.ts';
 import { applyQuery, isPublic, relatedItems } from '../shared/query.ts';
 import { newToken, newTrackingCode, sha256Hex, validateQuestion } from '../shared/questions.ts';
 import { slugify } from '../shared/hebrew.ts';
@@ -661,6 +662,21 @@ export async function createDemoRepository(load: SeedLoader = defaultLoader): Pr
     },
     async probeUrl() {
       throw new Error('בדיקת קישור מתבצעת בשרת ה-Node, שאינו פעיל במצב הדגמה.');
+    },
+    async youtubeMeta(url: string) {
+      requireEdit();
+      const id = youtubeId(url);
+      if (!id) throw new Error('זה לא קישור YouTube תקין');
+      let res: Response;
+      try {
+        res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`);
+      } catch {
+        throw new Error('לא ניתן למשוך את הכותרת. הדביקו אותה כפי שהיא ב-YouTube.');
+      }
+      if (!res.ok) throw new Error('YouTube לא החזיר כותרת לקישור הזה.');
+      const meta = youtubeMetaFromParts(id, await res.json(), null);
+      if (!meta) throw new Error('YouTube לא החזיר כותרת לקישור הזה.');
+      return meta;
     },
     async exportAll() {
       requireStaff();

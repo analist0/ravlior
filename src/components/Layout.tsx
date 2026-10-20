@@ -81,12 +81,13 @@ export function Header({ menu, onSearch }: { menu: Menu | undefined; onSearch: (
   return (
     <header className="site-header">
       <div className="container">
-        <Link to="/" className="brand" aria-label="אור המאיר — דף הבית">
+        <Link to="/" className="brand">
           <BrandMark />
           <span>
             <span className="brand-name">אור המאיר</span>
             <span className="brand-sub">תורתו של הרב ליאור כהן</span>
           </span>
+          <span className="sr-only">דף הבית</span>
         </Link>
         <nav className="main-nav" aria-label="ניווט ראשי">
           {(menu?.items ?? []).map((m) => <Link key={m.href} to={m.href}>{m.label}</Link>)}

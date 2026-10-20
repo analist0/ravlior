@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useLibraryState } from '../app/library-state.tsx';
 import { usePrefs } from '../app/prefs.tsx';
 import { readJSON, writeJSON } from '../app/storage.ts';
+import { heMatches } from '../shared/hebrew.ts';
 import { Icon } from './Icon.tsx';
 import { useToast } from './Toast.tsx';
 import { embedUrl, formatDuration, youtubeThumb } from '../shared/media.ts';
@@ -32,7 +33,7 @@ export function LessonPlayer({
   resume?: boolean;
   notes?: boolean;
 }) {
-  const { progress, saveProgress } = useLibraryState();
+  const { progress, saveProgress, isFavorite, toggleFavorite, isWatchLater, toggleWatchLater } = useLibraryState();
   const { reducedMotion } = usePrefs();
   const toast = useToast();
   const frameId = useId().replace(/:/g, '');
@@ -58,6 +59,7 @@ export function LessonPlayer({
   const [muted, setMuted] = useState(false);
   const [docked, setDocked] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [noteQuery, setNoteQuery] = useState('');
   const lastSave = useRef(0);
   const stamp = useRef({ t: start, at: 0 });
 
@@ -189,16 +191,64 @@ export function LessonPlayer({
     }
   };
 
+  const pipWindow = useRef<Window | null>(null);
+  const pictureInPicture = async () => {
+    if (kind === 'video' && videoRef.current) {
+      const video = videoRef.current;
+      try {
+        if (document.pictureInPictureElement) await document.exitPictureInPicture();
+        else if (document.pictureInPictureEnabled) await video.requestPictureInPicture();
+        else toast('תמונה בתוך תמונה אינה זמינה בדפדפן זה', { tone: 'error' });
+      } catch {
+        toast('תמונה בתוך תמונה אינה זמינה בדפדפן זה', { tone: 'error' });
+      }
+      return;
+    }
+    const dpp = (window as Window & { documentPictureInPicture?: { requestWindow: (o?: { width?: number; height?: number }) => Promise<Window> } }).documentPictureInPicture;
+    const at = Math.floor(shownTime());
+    const pipSrc = kind === 'embed' && source.providerId
+      ? embedUrl(source.provider, source.providerId, { start: at, autoplay: true, jsapi: true, origin: location.origin })
+      : null;
+    if (dpp && pipSrc) {
+      try {
+        const win = await dpp.requestWindow({ width: 480, height: 270 });
+        pipWindow.current = win;
+        win.document.body.style.margin = '0';
+        win.document.body.style.background = '#000';
+        const frame = win.document.createElement('iframe');
+        frame.src = pipSrc;
+        frame.title = main;
+        frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+        frame.setAttribute('allowfullscreen', '');
+        frame.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0';
+        win.document.body.append(frame);
+        if (loaded) command('pauseVideo');
+        setPlaying(false);
+        win.addEventListener('pagehide', () => { pipWindow.current = null; });
+        return;
+      } catch {
+        /* fall through to the in-page dock */
+      }
+    }
+    if (!loaded) setLoaded(true);
+    setDismissed(false);
+    setDocked(true);
+    toast('הנגן עבר לפינה. תמונה בתוך תמונה של הדפדפן אינה זמינה כאן.');
+  };
+
   const onKey = (e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-    const key = e.key.toLowerCase();
-    if (key === ' ' || key === 'k') { e.preventDefault(); toggle(); }
-    else if (key === 'j' || e.key === 'ArrowLeft') { e.preventDefault(); seek(shownTime() - 10); }
-    else if (key === 'l' || e.key === 'ArrowRight') { e.preventDefault(); seek(shownTime() + 10); }
-    else if (key === 'm') { e.preventDefault(); toggleMute(); }
-    else if (key === 'f') { e.preventDefault(); fullscreen(); }
-    else if (/^[0-9]$/.test(key) && duration) { e.preventDefault(); seek((duration * Number(key)) / 10); }
+    const code = e.code;
+    if (code === 'Space' || code === 'KeyK') { e.preventDefault(); toggle(); }
+    else if (code === 'KeyJ' || code === 'ArrowLeft') { e.preventDefault(); seek(shownTime() - 10); }
+    else if (code === 'KeyL' || code === 'ArrowRight') { e.preventDefault(); seek(shownTime() + 10); }
+    else if (code === 'KeyM') { e.preventDefault(); toggleMute(); }
+    else if (code === 'KeyF') { e.preventDefault(); fullscreen(); }
+    else if (code === 'KeyP') { e.preventDefault(); void pictureInPicture(); }
+    else if (code === 'Comma') { e.preventDefault(); changeRate(SPEEDS[Math.max(0, SPEEDS.indexOf(rate) - 1)] ?? rate); }
+    else if (code === 'Period') { e.preventDefault(); changeRate(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(rate) + 1)] ?? rate); }
+    else if (/^Digit[0-9]$/.test(code) && duration) { e.preventDefault(); seek((duration * Number(code.slice(5))) / 10); }
   };
 
   const activeChapter = chapters.reduce<MediaChapter | null>((acc, ch) => (shownTime() >= ch.t ? ch : acc), null);
@@ -207,13 +257,29 @@ export function LessonPlayer({
     ? embedUrl(source.provider, source.providerId, { start, autoplay: true, jsapi: true, origin: location.origin })
     : null;
   const short = item.type === 'short';
+  const posterRef = useRef<HTMLButtonElement>(null);
+  const adoptPoster = typeof document !== 'undefined' && !!document.getElementById('hall-lcp');
+  useLayoutEffect(() => {
+    const img = document.getElementById('hall-lcp');
+    const btn = posterRef.current;
+    if (!img || !btn || btn.contains(img)) return;
+    img.classList.add('is-placed');
+    btn.prepend(img);
+  }, [loaded]);
+  const consentText = kind === 'embed' ? 'הנגן הרשמי של YouTube ייטען בלחיצה' : 'ניגון הקובץ השמור';
+  const posterName = [
+    `ניגון: ${main}`,
+    consentText,
+    start > 0 ? `המשך מ־${formatDuration(start)}` : '',
+  ].filter(Boolean).join('. ');
 
   if (failed || (kind === 'embed' && !src)) {
     return (
       <div className="state" style={{ padding: 'var(--s-6)' }}>
         <Icon name="alert" />
         <h3 style={{ margin: 0 }}>הנגן לא הצליח לטעון</h3>
-        <a className="btn btn-secondary" href={source.url} target="_blank" rel="noopener noreferrer">פתיחה במקור</a>
+        <p style={{ margin: 0 }}>השיעור נשאר באתר. אפשר לנסות שוב בלי לצאת ליוטיוב.</p>
+        <button type="button" className="btn btn-secondary" onClick={() => { setFailed(false); setLoaded(false); }}>נסו שוב</button>
       </div>
     );
   }
@@ -233,6 +299,7 @@ export function LessonPlayer({
           className={`media-frame ${short ? 'short' : ''} ${mini ? 'is-mini' : 'in-flow'}`}
           ref={shellRef}
           tabIndex={0}
+          aria-keyshortcuts="Space KeyK KeyJ KeyL KeyM KeyF KeyP"
           aria-label={`נגן: ${main}`}
         >
           {kind === 'embed' && loaded && src && (
@@ -244,7 +311,7 @@ export function LessonPlayer({
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
               allowFullScreen
               referrerPolicy="strict-origin-when-cross-origin"
-              sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-fullscreen"
+              sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
               onLoad={onIframeLoad}
             />
           )}
@@ -273,12 +340,12 @@ export function LessonPlayer({
             />
           )}
           {!loaded && (
-            <button type="button" className="media-poster" onClick={() => setLoaded(true)} aria-label={`ניגון: ${main}${start > 0 ? `, המשך מ־${formatDuration(start)}` : ''}`}>
-              {kind === 'embed' && source.providerId && (
+            <button type="button" className="media-poster" ref={posterRef} onClick={() => setLoaded(true)} aria-label={posterName}>
+              {kind === 'embed' && source.providerId && !adoptPoster && (
                 <img src={youtubeThumb(source.providerId, 'hq')} alt="" width={480} height={360} fetchPriority="high" decoding="async" onError={(e) => e.currentTarget.classList.add('img-failed')} />
               )}
               <span className="play"><Icon name="play" /></span>
-              <span className="consent">{kind === 'embed' ? 'הנגן הרשמי של YouTube ייטען בלחיצה' : 'ניגון הקובץ השמור'}</span>
+              <span className="consent">{consentText}</span>
               {start > 0 && <span className="resume-pill">המשך מ־<span className="ltr">{formatDuration(start)}</span></span>}
             </button>
           )}
@@ -294,8 +361,8 @@ export function LessonPlayer({
 
       <div className="lesson-tools" role="group" aria-label="בקרת נגן">
         <button type="button" className="icon-btn" aria-label={playing ? 'השהיה' : 'ניגון'} onClick={toggle}><Icon name={playing ? 'pause' : 'play'} /></button>
-        <button type="button" className="icon-btn" aria-label="10 שניות אחורה" onClick={() => seek(shownTime() - 10)}><Icon name="fwd10" /></button>
-        <button type="button" className="icon-btn" aria-label="10 שניות קדימה" onClick={() => seek(shownTime() + 10)}><Icon name="back10" /></button>
+        <button type="button" className="icon-btn" aria-label="10 שניות אחורה" onClick={() => seek(shownTime() - 10)}><Icon name="back10" /></button>
+        <button type="button" className="icon-btn" aria-label="10 שניות קדימה" onClick={() => seek(shownTime() + 10)}><Icon name="fwd10" /></button>
         <span className="player-time ltr">{formatDuration(shownTime())}{duration ? ` / ${formatDuration(duration)}` : ''}</span>
         <label className="row lesson-rate">
           <Icon name="speed" />
@@ -306,6 +373,9 @@ export function LessonPlayer({
         </label>
         <button type="button" className="icon-btn" aria-pressed={muted} aria-label={muted ? 'ביטול השתקה' : 'השתקה'} onClick={toggleMute}><Icon name="listen" /></button>
         <button type="button" className="icon-btn" aria-label="מסך מלא" onClick={fullscreen}><Icon name="external" /></button>
+        <button type="button" className="icon-btn" aria-label="תמונה בתוך תמונה" onClick={() => void pictureInPicture()}><Icon name="pip" /></button>
+        <button type="button" className="icon-btn" aria-pressed={isFavorite(item.id)} aria-label={isFavorite(item.id) ? 'הסרה מהמועדפים' : 'שמירה במועדפים'} onClick={() => toast(toggleFavorite(item.id) ? 'נשמר במועדפים' : 'הוסר מהמועדפים')}><Icon name="bookmark" /></button>
+        <button type="button" className="icon-btn" aria-pressed={isWatchLater(item.id)} aria-label={isWatchLater(item.id) ? 'הסרה מצפייה מאוחר יותר' : 'צפייה מאוחר יותר'} onClick={() => toast(toggleWatchLater(item.id) ? 'נשמר לצפייה מאוחר יותר' : 'הוסר מרשימת הצפייה')}><Icon name="clock" /></button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => void shareAt()}><Icon name="share" /> שיתוף מהדקה</button>
       </div>
       {duration != null && (
@@ -323,14 +393,20 @@ export function LessonPlayer({
       )}
       <details className="lesson-keys">
         <summary>קיצורי מקלדת</summary>
-        <p className="soft">כשהמסגרת סביב הנגן מסומנת: רווח או K ניגון, J או חץ שמאלה אחורה, L או חץ ימינה קדימה, M השתקה, F מסך מלא, ספרות 0–9 קפיצה באחוזים. ציר הזמן נשאר משמאל לימין.</p>
+        <p className="soft">כשהמסגרת סביב הנגן מסומנת, לפי האות הלטינית על המקש גם כשהמקלדת בעברית: רווח או K ניגון, J או חץ שמאלה אחורה, L או חץ ימינה קדימה, M השתקה, F מסך מלא, P תמונה בתוך תמונה, פסיק ונקודה למהירות, ספרות 0–9 קפיצה באחוזים. ציר הזמן נשאר משמאל לימין.</p>
       </details>
 
+      {(chapters.length > 0 || (notes && item.transcript)) && (
+        <div className="field lesson-find">
+          <label htmlFor={`find-${frameId}`}>חיפוש בפרקים ובתמליל</label>
+          <input id={`find-${frameId}`} className="input" type="search" value={noteQuery} onChange={(e) => setNoteQuery(e.target.value)} placeholder="מילה מתוך הפרק או התמליל" />
+        </div>
+      )}
       {chapters.length > 0 && (
         <section className="chapter-list" aria-label="פרקי השיעור">
           <h2>פרקים</h2>
           <ol>
-            {chapters.map((ch) => (
+            {chapters.filter((ch) => !noteQuery.trim() || heMatches(ch.label, noteQuery)).map((ch) => (
               <li key={`${ch.t}-${ch.label}`}>
                 <button type="button" aria-current={activeChapter === ch ? 'true' : undefined} onClick={() => openAt(ch.t)}>
                   <span className="ltr">{formatDuration(ch.t)}</span>
@@ -339,17 +415,45 @@ export function LessonPlayer({
               </li>
             ))}
           </ol>
+          {noteQuery.trim() && chapters.every((ch) => !heMatches(ch.label, noteQuery)) && <p className="soft">אין פרק עם המילה הזו.</p>}
         </section>
       )}
       {notes && item.transcript && (
-        <section className="lesson-transcript" aria-labelledby={`tr-${frameId}`}>
-          <h2 id={`tr-${frameId}`}>תמליל</h2>
-          <div className="prose">{item.transcript}</div>
-        </section>
+        <Transcript text={item.transcript} query={noteQuery} headingId={`tr-${frameId}`} />
       )}
       {notes && chapters.length === 0 && !item.transcript && (
         <p className="soft"><Icon name="info" /> פרקים ותמליל מוצגים רק כשהם קיימים במקור. לשיעור זה לא נוספו.</p>
       )}
     </div>
+  );
+}
+
+function Transcript({ text, query, headingId }: { text: string; query: string; headingId: string }) {
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const q = query.trim();
+  const shown = q ? lines.filter((l) => heMatches(l, q)) : lines;
+  const across = !!q && shown.length === 0 && heMatches(text, q);
+  const body = across ? lines : shown;
+  return (
+    <section className="lesson-transcript" aria-labelledby={headingId}>
+      <h2 id={headingId}>תמליל</h2>
+      {q && <p className="soft" role="status">{across ? 'המילים מופיעות בחלקים שונים של התמליל.' : `${shown.length} קטעים`}</p>}
+      <div className="prose">
+        {body.map((line, i) => <p key={i}><Mark text={line} query={q} /></p>)}
+      </div>
+      {q && shown.length === 0 && !across && <p className="soft">אין התאמה בתמליל.</p>}
+    </section>
+  );
+}
+
+function Mark({ text, query }: { text: string; query: string }) {
+  if (!query || !text.includes(query)) return <>{text}</>;
+  const parts = text.split(query);
+  return (
+    <>
+      {parts.map((part, i) => (
+        <span key={i}>{part}{i < parts.length - 1 && <mark>{query}</mark>}</span>
+      ))}
+    </>
   );
 }

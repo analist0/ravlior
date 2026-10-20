@@ -151,8 +151,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 )}
               </div>
               <div className="row" style={{ gap: 0, flexWrap: 'nowrap' }}>
-                <button className="icon-btn" onClick={() => seek(-15)} aria-label="15 שניות אחורה"><Icon name="fwd10" /></button>
-                <button className="icon-btn" onClick={() => seek(30)} aria-label="30 שניות קדימה"><Icon name="back10" /></button>
+                <button className="icon-btn" onClick={() => seek(-15)} aria-label="15 שניות אחורה"><Icon name="back10" /></button>
+                <button className="icon-btn" onClick={() => seek(30)} aria-label="30 שניות קדימה"><Icon name="fwd10" /></button>
                 <button className="icon-btn" onClick={() => setExpanded((x) => !x)} aria-expanded={expanded} aria-label="אפשרויות נגן ותור"><Icon name={expanded ? 'chevronDown' : 'chevronUp'} /></button>
               </div>
             </div>

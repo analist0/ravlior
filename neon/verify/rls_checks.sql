@@ -171,6 +171,10 @@ select pg_temp.back();
 -- ——— Hebrew normalization parity with src/shared/hebrew.ts (tests/hebrew.test.ts uses the same inputs) ———
 select pg_temp.ok(public.he_normalize('עוּלוּ אוּשְׁפִּיזִין') = 'עולו אושפיזינ', 'he_normalize strips niqqud and folds final letters (matches JS)');
 select pg_temp.ok(public.he_normalize('זצ"ל') = public.he_normalize('זצ״ל') and public.he_normalize('ט"ו באב') = 'טו באב', 'he_normalize ignores geresh/gershayim (matches JS)');
+select pg_temp.ok(public.he_search_fold('עניין') = 'ענינ' and public.he_search_fold('ענין') = 'ענינ' and public.he_search_fold('וודאי') = 'ודאי',
+  'he_search_fold collapses doubled yod and vav (matches JS)');
+select pg_temp.ok(public.he_search_fold(public.he_keyboard('xufv')) = 'סוכה' and public.he_search_fold(public.he_keyboard('vfk')) = 'הכל',
+  'he_keyboard maps Israeli QWERTY to Hebrew (matches JS)');
 
 -- ——— seed audit (only meaningful after neon/seed.sql) ———
 select pg_temp.ok((select count(distinct provider_id) from public.media_sources where provider = 'youtube' and kind = 'media') in (0, 182),

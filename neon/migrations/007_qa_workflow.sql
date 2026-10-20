@@ -166,7 +166,8 @@ begin
         and q.status in ('approved', 'published')
         and q.publish_consent
         and q.question_text = new.question_text
-        and coalesce(q.answer_text, '') = public.public_answer_plain(new.answer_blocks)
+        and regexp_replace(btrim(coalesce(q.answer_text, '')), '\s+', ' ', 'g')
+          = regexp_replace(btrim(public.public_answer_plain(new.answer_blocks)), '\s+', ' ', 'g')
     ) into matched;
     if not (public.has_role(array['rabbi']::public.app_role[]) or matched) then
       raise exception 'approved_by_rabbi requires the rabbi or an approved, consented submission' using errcode = '42501';

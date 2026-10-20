@@ -135,7 +135,7 @@ export async function loadPrerender(sql: Sql) {
   const series = (await sql(`select s.*, coalesce((select jsonb_agg(si.content_id order by si.position) from public.series_items si where si.series_id = s.id), '[]'::jsonb) as items
     from public.series s where s.status = 'published' and s.deleted_at is null order by s.sort`)).map((r) => ({ ...fromRow<Series>(r), items: Array.isArray(r.items) ? r.items as string[] : [] }));
   const pages = (await sql(`select * from public.pages where status = 'published' and deleted_at is null`)).map((r) => fromRow<Page>(r));
-  const questions = (await sql(`select * from public.public_questions where status = 'published' and deleted_at is null and hidden = false order by published_at desc nulls last`)).map((r) => fromRow<PublicQuestion>(r));
+  const questions = (await sql(`select * from public.public_questions where status = 'published' and deleted_at is null and hidden = false order by published_at desc nulls last`)).map((r) => publicPq(r));
   return { content, topics, series, pages, questions };
 }
 
@@ -211,7 +211,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         if (!ids.length) return op === 'pq.list' ? [] : { items: [], total: 0, page, pageSize };
         const full = await sql(`select * from public.public_questions where id = any($1::uuid[]) and status = 'published' and deleted_at is null and hidden = false`, [ids]);
         const map = new Map<string, PublicQuestion>();
-        for (const r of full) map.set(String(r.id), await withTags(sql, fromRow<PublicQuestion>(r)));
+        for (const r of full) map.set(String(r.id), await withTags(sql, publicPq(r)));
         const items = ids.map((id) => map.get(id)).filter((x): x is PublicQuestion => !!x);
         if (op === 'pq.list') return items;
         return { items, total: Number(rows[0]?.total ?? 0), page, pageSize };
@@ -242,14 +242,14 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
           [a.slug],
         );
         if (!rows[0]) return null;
-        const question = await withTags(sql, fromRow<PublicQuestion>(rows[0]));
+        const question = await withTags(sql, publicPq(rows[0]));
         const related = question.topicId
           ? (await sql(
             `select * from public.public_questions
              where status = 'published' and deleted_at is null and hidden = false and topic_id = $1 and id <> $2
              order by published_at desc nulls last limit 4`,
             [question.topicId, question.id],
-          )).map((r) => fromRow<PublicQuestion>(r))
+          )).map((r) => publicPq(r))
           : [];
         return { ...question, related };
       }
@@ -258,7 +258,7 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
           `select * from public.public_questions
            where status = 'published' and deleted_at is null and hidden = false and week_pick = true
            order by published_at desc nulls last limit 1`,
-        )).map((r) => fromRow<PublicQuestion>(r));
+        )).map((r) => publicPq(r));
       case 'track': {
         const rows = await sql(`select * from public.track_question($1, $2)`, [a.code, a.token]);
         return rows[0] ? fromRow(rows[0]) : null;
@@ -525,7 +525,11 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
         );
         const pq = created[0];
         if (!pq) throw new ApiError(403, 'יצירת השו״ת נחסמה.', '42501');
-        if (!built.approvedByRabbi) return { published: false, needsReapproval: true, id: String(pq.id) };
+        if (!built.approvedByRabbi) {
+          // Link the pending public entry so staff can find it from the submission.
+          await mustWrite(sql, `update public.question_submissions set public_question_id = $1, version = $2 where id = $3 returning id`, [pq.id, a.expectedVersion, a.id], 'עדכון השאלה');
+          return { published: false, needsReapproval: true, id: String(pq.id) };
+        }
         await mustWrite(sql, `update public.public_questions set status = 'approved', version = $2 where id = $1 returning id`, [pq.id, pq.version], 'אישור השו״ת');
         await mustWrite(sql, `update public.public_questions set status = 'published', published_at = coalesce(published_at, now()), version = $2 where id = $1 returning id`, [pq.id, Number(pq.version) + 1], 'פרסום השו״ת');
         const reason = '';
@@ -663,6 +667,14 @@ async function run(userId: string | null, op: string, a: Record<string, unknown>
   });
 }
 
+/** Public bank rows never carry the private submission link or the search index. */
+function publicPq(r: Row): PublicQuestion {
+  const copy = { ...r };
+  delete copy.search_text;
+  copy.source_submission_id = null;
+  return fromRow<PublicQuestion>(copy);
+}
+
 async function withTags(sql: Sql, q: PublicQuestion): Promise<PublicQuestion> {
   const tags = await sql(`select tag from public.public_question_tags where question_id = $1 order by tag`, [q.id]);
   return { ...q, tags: tags.map((t) => String(t.tag)) };
@@ -686,7 +698,7 @@ async function copyApprovedAudio(path: string | null): Promise<string | null> {
 
 function questionRow(r: Row): QuestionSubmission {
   const copy = { ...r };
-  delete copy.token_hash; delete copy.client_fingerprint; delete copy.total;
+  delete copy.token_hash; delete copy.notify_token_hash; delete copy.client_fingerprint; delete copy.total;
   return fromRow<QuestionSubmission>(copy);
 }
 

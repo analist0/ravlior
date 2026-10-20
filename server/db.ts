@@ -53,8 +53,8 @@ export function getPool(): { connect: () => Promise<Querier> } {
 
 function hebrew(message: string): string {
   if (/version conflict/i.test(message)) return 'הרשומה שונתה בידי משתמש אחר מאז שנטענה. רעננו כדי לראות את הגרסה העדכנית.';
-  if (/consent/i.test(message)) return 'אי אפשר לפרסם בלי הסכמת השואל.';
   if (/approved_by_rabbi/i.test(message)) return 'סימון „אושר על ידי הרב” מותר לרב, או לשאלה שהרב כבר אישר והשואל הסכים לפרסם.';
+  if (/consent/i.test(message)) return 'אי אפשר לפרסם בלי הסכמת השואל.';
   if (/transition/i.test(message)) return 'המעבר בין המצבים אינו מותר לתפקיד הזה.';
   if (/new rows start/i.test(message)) return 'רשומה חדשה נפתחת כטיוטה או בבדיקה.';
   if (/only an owner/i.test(message)) return 'רק בעלים יכול להעניק או לבטל תפקיד בעלים או מנהל.';
